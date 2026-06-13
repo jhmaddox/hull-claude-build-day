@@ -86,7 +86,9 @@ echo "▸ Caddy: control plane + on-demand TLS for app domains"
 sudo tee /etc/caddy/Caddyfile >/dev/null <<EOF
 {
     on_demand_tls {
-        ask http://127.0.0.1:8000/deploys/tls/ask
+        # Trailing slash REQUIRED: Django APPEND_SLASH 301-redirects the
+        # slashless URL, and Caddy refuses to follow redirects on the ask check.
+        ask http://127.0.0.1:8000/deploys/tls/ask/
     }
 }
 
