@@ -22,9 +22,30 @@
   <div class="card stat"><div class="label">Failed</div><div class="value {% if stats.failed %}danger{% endif %}">{{ stats.failed }}</div></div>
 </div>
 
+{# Status + kind filters. Absent params -> unfiltered. [ORC-6] #}
+<div class="row mb-16" style="gap:8px; flex-wrap:wrap;">
+  <a class="pill {% if not active.status and not active.kind %}pill-live{% endif %}" href="/orchestration/">All</a>
+  {% for s in status_choices %}
+  <a class="pill {% if active.status == s %}pill-live{% endif %}"
+     href="/orchestration/?status={{ s }}{% if active.kind %}&kind={{ active.kind }}{% endif %}">{{ s }}</a>
+  {% endfor %}
+  <span class="faint">·</span>
+  {% for k in kind_choices %}
+  <a class="pill {% if active.kind == k %}pill-live{% endif %}"
+     href="/orchestration/?kind={{ k }}{% if active.status %}&status={{ active.status }}{% endif %}">{{ k }}</a>
+  {% endfor %}
+  {% if active.status or active.kind %}
+  <span class="badge badge-warn">
+    filtered
+    {% if active.status %}· status={{ active.status }}{% endif %}
+    {% if active.kind %}· kind={{ active.kind }}{% endif %}
+  </span>
+  {% endif %}
+</div>
+
 <div class="card pad-0"
      id="wf-table"
-     hx-get="/orchestration/table/"
+     hx-get="/orchestration/table/{% if active.status or active.kind %}?{% if active.status %}status={{ active.status }}{% endif %}{% if active.status and active.kind %}&{% endif %}{% if active.kind %}kind={{ active.kind }}{% endif %}{% endif %}"
      hx-trigger="every 2s"
      hx-swap="innerHTML">
   {% include "orchestration/_workflow_table.html" %}

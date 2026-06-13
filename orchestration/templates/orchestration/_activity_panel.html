@@ -9,7 +9,7 @@
     <div class="card pad-0">
       <div class="card-head" style="padding:16px 18px 0;">
         <h2>Running workflows</h2>
-        <span class="badge badge-warn">{{ workflows.count }}</span>
+        <span class="badge badge-warn">{{ workflows|length }}</span>
       </div>
       <div class="list">
         {% for wf in workflows %}
@@ -17,7 +17,10 @@
           <span class="badge badge-warn"><span class="spinner" style="width:10px;height:10px;"></span> Running</span>
           <div class="grow">
             <strong>{{ wf.name }}</strong>
-            <div class="muted small">{{ wf.project.name|default:"—" }} · {{ wf.backend }} · {{ wf.created_at|timesince }} ago</div>
+            <div class="muted small">
+              {{ wf.project.name|default:"—" }} · {{ wf.backend }} · {{ wf.created_at|timesince }} ago
+              {% if wf.link %}· <span class="muted">→ {{ wf.link.label }}</span>{% endif %}
+            </div>
           </div>
         </a>
         {% empty %}

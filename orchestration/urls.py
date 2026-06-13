@@ -10,4 +10,9 @@ urlpatterns = [
     path("activity/", views.activity, name="activity"),
     path("activity/panel/", views.activity_panel, name="activity_panel"),
     path("<int:pk>/", views.workflow_detail, name="workflow_detail"),
+    path(
+        "<int:pk>/panel/",
+        views.workflow_detail_panel,
+        name="workflow_detail_panel",
+    ),
 ]

@@ -1,0 +1,33 @@
+{% load helm_extras %}
+{# Live-refreshable fragment: step timeline + inline agent output. [ORC-3/4/5] #}
+<div class="card pad-0 mb-16">
+  <div class="card-head" style="padding:16px 18px 0;"><h2>Steps</h2></div>
+  <div style="padding:6px 18px 14px;">
+    {% if steps %}
+    <div class="feed">
+      {% for s in steps %}
+      <div class="feed-item">
+        <div class="feed-ico {{ s.level }}">{{ s.icon|feed_icon }}</div>
+        <div class="feed-body">
+          <div>{{ s.text }}</div>
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+    {% else %}
+    <div class="empty"><div class="big">…</div>No steps recorded yet.</div>
+    {% endif %}
+  </div>
+</div>
+
+{% if agent %}
+<div class="card pad-0">
+  <div class="card-head" style="padding:16px 18px 0;">
+    <h2>Agent output</h2>
+    <a class="badge badge-neutral" href="/agents/{{ agent.pk }}/">{{ agent.get_kind_display }} · agent #{{ agent.pk }} →</a>
+  </div>
+  <div style="padding:0 18px 18px;">
+    <div class="logs">{{ agent.output|default:"(no output yet)" }}</div>
+  </div>
+</div>
+{% endif %}

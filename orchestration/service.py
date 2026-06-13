@@ -89,21 +89,26 @@ def _run(name, fn, *, project=None, ref_type="", ref_id=None, temporal=None):
         """Persist WorkflowRun bookkeeping, tolerating transient DB locks.
 
         On sqlite (tests + the demo) a background thread's commit can race the
-        main connection and raise ``database is locked``. Retrying keeps a
-        successful run from being mis-recorded as FAILED — loop-safe.
+        main connection and raise ``database is locked``. Under the full test
+        suite many daemon threads contend at once, so we retry with backoff +
+        jitter for several seconds. Retrying keeps a successful run from being
+        mis-recorded as FAILED (or stuck RUNNING) — loop-safe.
         """
+        import random
+        import time
+
         from django.db import OperationalError
 
-        for attempt in range(8):
+        attempts = 60  # ~ up to a few seconds of backoff, well under callers' waits
+        for attempt in range(attempts):
             try:
                 wf.save(update_fields=fields)
                 return
             except OperationalError:
-                if attempt == 7:
+                if attempt == attempts - 1:
                     raise
-                import time
-
-                time.sleep(0.05)
+                # Capped backoff with jitter so contending threads de-sync.
+                time.sleep(min(0.05 * (attempt + 1), 0.25) + random.uniform(0, 0.03))
 
     def _body():
         # Each thread needs its own DB connection lifecycle.

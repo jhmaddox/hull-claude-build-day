@@ -14,19 +14,33 @@
   {% else %}<span class="badge {{ run.status|status_badge }}">{{ run.get_status_display }}</span>{% endif %}
 </div>
 
-{% if run.project %}
+{# Linked-entity panel: real <a href> when resolvable, plain text otherwise. [ORC-2] #}
 <div class="card mb-16">
   <div class="row between">
-    <div><strong>{{ run.project.name }}</strong>{% if run.ref_type %}<div class="muted small">{{ run.ref_type }} #{{ run.ref_id }}</div>{% endif %}</div>
-    <a class="btn btn-sm btn-ghost" href="/projects/{{ run.project.slug }}/">Open project →</a>
+    <div>
+      {% if run.project %}<strong>{{ run.project.name }}</strong>{% endif %}
+      <div class="muted small">
+        {% if link %}
+          <span class="badge badge-neutral">{{ link.kind }}</span>
+          <a href="{{ link.url }}">{{ link.label }} →</a>
+        {% elif run.ref_type %}
+          {{ run.ref_type }} #{{ run.ref_id }}
+        {% else %}
+          no linked entity
+        {% endif %}
+      </div>
+    </div>
+    {% if run.project %}<a class="btn btn-sm btn-ghost" href="/projects/{{ run.project.slug }}/">Open project →</a>{% endif %}
   </div>
 </div>
-{% endif %}
 
-<div class="card pad-0">
-  <div class="card-head" style="padding:16px 18px 0;"><h2>Detail</h2></div>
-  <div style="padding:0 18px 18px;">
-    <div class="logs">{{ run.detail|default:"(no detail recorded)" }}</div>
-  </div>
+{# Step timeline + inline agent output. HTMX-live while running, stops at terminal. [ORC-3/4/5] #}
+<div id="wf-detail-panel"
+     {% if run.status == 'running' %}
+     hx-get="/orchestration/{{ run.pk }}/panel/"
+     hx-trigger="every 2s"
+     hx-swap="innerHTML"
+     {% endif %}>
+  {% include "orchestration/_workflow_detail_panel.html" %}
 </div>
 {% endblock %}

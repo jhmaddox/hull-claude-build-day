@@ -65,3 +65,55 @@ class WorkflowRun(models.Model):
         WorkflowRun.objects.filter(pk=self.pk).update(
             detail=models.F("detail") + text
         )
+
+    # ------------------------------------------------------------------ #
+    # Ref resolution (org-scoped, fallback-safe) - see orchestration.refs #
+    # ------------------------------------------------------------------ #
+    @property
+    def kind(self):
+        """Coarse workflow kind derived from ref_type/name (for filtering).
+
+        Returns one of: import|deploy|agent_run|ci|incident|"". Never raises.
+        """
+        rt = (self.ref_type or "").strip()
+        mapping = {
+            "incident": "incident",
+            "pull_request": "ci",
+            "agent_run": "agent_run",
+            "environment": "deploy",
+        }
+        if rt in mapping:
+            return mapping[rt]
+        name = (self.name or "").lower()
+        if name.startswith("import"):
+            return "import"
+        if name.startswith("deploy"):
+            return "deploy"
+        if name.startswith("ci"):
+            return "ci"
+        if "remediate" in name or "incident" in name:
+            return "incident"
+        if "agent" in name:
+            return "agent_run"
+        return ""
+
+    def linked(self, request_or_org=None):
+        """Resolve this run's ref to a Link (object/url/label/kind) or None.
+
+        Org-scoped when given a request/Org; always fallback-safe.
+        """
+        from . import refs
+
+        return refs.resolve(self, request_or_org)
+
+    def linked_object(self, request_or_org=None):
+        link = self.linked(request_or_org)
+        return link.object if link else None
+
+    def linked_url(self, request_or_org=None):
+        link = self.linked(request_or_org)
+        return link.url if link else None
+
+    def linked_label(self, request_or_org=None):
+        link = self.linked(request_or_org)
+        return link.label if link else None
