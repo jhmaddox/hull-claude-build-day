@@ -37,67 +37,50 @@ export const meta = {
 // --------------------------------------------------------------------------- //
 // Sprint definitions. The Mayor selects one via args.sprint.
 // --------------------------------------------------------------------------- //
-const SPRINTS = {
-  '0': {
-    goal: 'Foundation: auth + multitenancy + Postgres + Docker-Compose deploys + custom domains. Must NOT break the autonomous incident->fix loop.',
-    qa_rounds: 2,
-    workstreams: [
-      {
-        key: 'tenancy', title: 'Accounts & Multitenancy', sequential: true,
-        owns: 'accounts/ + a nullable org FK on existing tenant models + scoping middleware',
-        pm_focus: 'Orgs, Users (Django auth), Membership with roles (owner/admin/member), invitations, signup/login/logout, org switcher, org-scoped everything, SSO-ready.',
-        build_brief:
-          'Create an `accounts` Django app: Org, Membership(role), Invitation; use django.contrib.auth User. ' +
-          'Add a NULLABLE `org` FK to every existing tenant-scoped model (projects.Project, deploys.Environment/Deployment, agents.Worktree/AgentRun, vcs.PullRequest, observability.LogLine/MetricPoint/Incident, core.Event, orchestration.WorkflowRun) and a data migration creating a default Org "Acme Inc" and backfilling existing rows. ' +
-          'Add a thread-local current-org middleware + an OrgScoped manager/mixin and a login_required + org-scoping pattern documented in accounts/scoping.py. ' +
-          'Build login/signup/logout + an org switcher + members/invite pages (HTMX, base.html styling). ' +
-          'Do NOT delete data or break existing views — make org optional in code paths so the autonomous loop keeps working. You MAY makemigrations for ALL apps for this workstream (you are the cross-cutting foundation), but do NOT migrate.',
-      },
-      {
-        key: 'deploys-v2', title: 'Docker-Compose Deploys + Custom Domains', sequential: false,
-        owns: 'deploys/ (services, compose builder, domain model/routing), a deploys/compose/ dir',
-        pm_focus: 'Each environment runs as a Docker Compose stack (web + Postgres + worker + Redis). Per-env config/secrets. Custom domain per project/env (hostname, not path) with Caddy on-demand TLS. Deploy history + rollback.',
-        build_brief:
-          'Evolve deploys to optionally run an environment as a Docker Compose stack (web + postgres + worker + redis), autodetected from the repo (Dockerfile/compose if present, else a generated compose using the detected runtime). Add a Domain concept (project/env -> hostname like <project>-<env>.apps.dev-reservclaims.com, plus optional custom hostname) and a routing/registration layer that a Caddy on-demand-TLS reverse proxy can consume (e.g. Hull serves a /caddy/ask allowlist endpoint and a hostname->upstream map). Keep the EXISTING lightweight subprocess deploy path working as a fallback (HELM_DEPLOY_MODE=process|compose, default process) so the live autonomous loop is not broken. Do NOT edit settings.py/root urls/base.html — leave wiring notes for the integrator.',
-      },
-    ],
-  },
-  '1': {
-    goal: 'Work & knowledge: a Jira-grade issues tracker and a Docs/Wiki, both org-scoped and linked to PRs/incidents.',
-    qa_rounds: 2,
-    workstreams: [
-      {
-        key: 'issues', title: 'Issues (Jira)', sequential: false, owns: 'issues/',
-        pm_focus: 'Boards, tickets (type/status/priority/assignee/labels), sprints, ticket detail with comments + activity, links to PRs/incidents/commits. The agent backlog lives here.',
-        build_brief: 'Create an `issues` Django app (org-scoped): Board, Ticket, Sprint, Comment, Label; board (kanban) + backlog + ticket detail UI (HTMX drag/status). Link tickets to vcs.PullRequest and observability.Incident. Provide a service API issues.services.create_ticket(...) so agents can file tickets. Own only issues/. Leave wiring notes.',
-      },
-      {
-        key: 'docs', title: 'Docs / Wiki', sequential: false, owns: 'wiki/',
-        pm_focus: 'Spaces, hierarchical markdown pages, search, page history, linking to code/PRs/incidents, a knowledge vault.',
-        build_brief: 'Create a `wiki` Django app (org-scoped): Space, Page (markdown, parent for hierarchy, slug), simple full-text search, page tree nav + render (server-side markdown). HTMX edit-in-place. Own only wiki/. Leave wiring notes.',
-      },
-    ],
-  },
-  '2': {
-    goal: 'Operations: Datadog-grade observability and PagerDuty-grade incident management, wired to the autonomous loop.',
-    qa_rounds: 2,
-    workstreams: [
-      {
-        key: 'observability-v2', title: 'Observability v2 (Datadog-level)', sequential: false, owns: 'observability/ (additive)',
-        pm_focus: 'Structured logs with search/filter, metrics (req rate, error rate, p50/p95/p99 latency, throughput), live dashboards, monitors/alerts with thresholds.',
-        build_brief: 'Extend observability (additively; do not remove ingest_line/Incident contracts): metrics rollups + p50/p95/p99, a log search/filter view, a dashboards view (HTMX-polled time series, lightweight inline SVG/canvas charts, no heavy JS), and a Monitor model (threshold -> fires an Incident). Own only observability/. Leave wiring notes.',
-      },
-      {
-        key: 'incidents-v2', title: 'Incidents v2 (PagerDuty-level)', sequential: false, owns: 'oncall/ (new app) + additive incident fields via oncall',
-        pm_focus: 'Severities, on-call schedules, escalation policies, incident timeline, ack/resolve, postmortems, alert routing. Wired to the autonomous remediation loop.',
-        build_brief: 'Create an `oncall` Django app (org-scoped): Schedule, EscalationPolicy, OnCallShift, plus Postmortem + IncidentTimelineEvent referencing observability.Incident (FK, do not modify Incident schema). Incident detail additions via includes/fragments. Render an incident timeline + ack/resolve + postmortem editor. Own only oncall/. Leave wiring notes.',
-      },
-    ],
-  },
+const WIDE = {
+  goal: 'Build-out: make every section org-scoped (multitenant) and ship its features in parallel, on top of the accounts tenancy contract. NEVER break the autonomous incident->fix loop (keep additive + fallbacks).',
+  qa_rounds: 2,
+  workstreams: [
+    { key: 'accounts', title: 'Accounts & User Management', owns: 'accounts/ (extend the existing skeleton)',
+      pm_focus: 'Enterprise org/user management: members list + role management, invitations (create/accept), org settings, profile, an org switcher for the top nav.',
+      build_brief: 'Extend the existing accounts app (Org/Membership/Invitation already exist): members management page (list, change role, remove), invitation create + accept flow, org settings page, and an org-switcher fragment for base.html (report the nav include as a wiring note). Use Membership.role for permissions. Own ONLY accounts/.' },
+    { key: 'projects', title: 'Projects (multitenant)', owns: 'projects/',
+      pm_focus: 'Org-scoped projects: every project belongs to an org; list/detail/import all scoped to request.org; nicer multi-project UX.',
+      build_brief: 'Make projects.Project org-scoped: subclass accounts.models.OrgScopedModel (adds org FK) and set org=request.org on create; scope ALL project views with accounts.scoping (for_org / scoped). Keep import_project working (default org when none). Own ONLY projects/.' },
+    { key: 'deploys', title: 'Docker-Compose Deploys + Custom Domains', owns: 'deploys/',
+      pm_focus: 'Complex apps: each env runs as a Docker Compose stack (web+Postgres+worker+Redis). Per-env env-vars/secrets. Custom domain per project/env (hostname, not path) + Caddy on-demand TLS. Deploy history + rollback.',
+      build_brief: 'Add a compose deploy mode to deploys (web+postgres+worker+redis), autodetected (Dockerfile/compose if present else generated). Add per-env EnvVar/secret config + a Domain model (env -> hostname like <project>-<env>.apps.dev-reservclaims.com, plus optional custom hostname) and a Caddy on-demand-TLS integration (serve a /caddy/ask allowlist + a hostname->port map view). Org-scope Environment/Deployment. CRITICAL: keep the existing subprocess deploy path as default fallback (HELM_DEPLOY_MODE=process|compose, default process) so the live loop is unbroken. Own ONLY deploys/.' },
+    { key: 'agents', title: 'Agents (multitenant + UX)', owns: 'agents/',
+      pm_focus: 'Org-scoped agent runs + a great live agent console; agent roster/types.',
+      build_brief: 'Org-scope agents.Worktree/AgentRun (org FK; scope views). Polish the agent run live console (streaming output, status, cost, linked PR/incident) and an agents roster page. Keep run_agent/launch_agent contracts intact (the loop depends on them). Own ONLY agents/.' },
+    { key: 'vcs', title: 'Pull Requests (multitenant + UX)', owns: 'vcs/',
+      pm_focus: 'Org-scoped PRs + richer review UX (diff, CI status, merge, links).',
+      build_brief: 'Org-scope vcs.PullRequest (org FK; scope views). Improve PR list/detail (better diff rendering, CI badges, links to issues/incidents). Keep open_pull_request/merge_pull_request contracts intact. Own ONLY vcs/.' },
+    { key: 'observability', title: 'Observability v2 (Datadog-level)', owns: 'observability/',
+      pm_focus: 'Structured log search/filter, metrics rollups (req rate, error rate, p50/p95/p99, throughput), live dashboards, Monitors (threshold -> incident).',
+      build_brief: 'Additively extend observability (do NOT change ingest_line/Incident contracts the loop uses): org-scope LogLine/MetricPoint/Incident; add metric rollups + p50/p95/p99; a log search/filter view; a dashboards view (HTMX-polled, lightweight inline SVG charts, no heavy JS); a Monitor model whose threshold breach opens an Incident via the existing open_or_update_incident. Own ONLY observability/.' },
+    { key: 'orchestration', title: 'Agent Org & Orchestration UI', owns: 'orchestration/',
+      pm_focus: 'Surface the agent org in-product: workflow/sprint runs, live agent activity, the autonomous-build story.',
+      build_brief: 'Org-scope orchestration.WorkflowRun; build an Agent Org page showing workflow/sprint runs with status + drill-in to agents, and a live activity view. Keep the service.py contracts (remediate/run_ci/deploy/run_feature_agent) intact. Own ONLY orchestration/.' },
+    { key: 'issues', title: 'Issues (Jira)', owns: 'issues/ (NEW app)',
+      pm_focus: 'Boards, tickets (type/status/priority/assignee/labels), sprints, ticket detail with comments + activity, links to PRs/incidents/commits. The agent backlog lives here.',
+      build_brief: 'Create a NEW org-scoped `issues` app: Board, Ticket, Sprint, Comment, Label (all subclass OrgScopedModel where tenant data); kanban board + backlog + ticket detail (HTMX status changes). Link Ticket to vcs.PullRequest and observability.Incident (nullable FKs). Provide issues.services.create_ticket(org, ...) so agents can file tickets. Own ONLY issues/.' },
+    { key: 'wiki', title: 'Docs / Wiki', owns: 'wiki/ (NEW app)',
+      pm_focus: 'Spaces, hierarchical markdown pages, search, page history, knowledge vault, linking to code/PRs/incidents.',
+      build_brief: 'Create a NEW org-scoped `wiki` app: Space, Page (markdown body, parent for hierarchy, slug, updated_at). Server-side markdown render, page tree nav, simple search, HTMX edit-in-place. Subclass OrgScopedModel. Own ONLY wiki/.' },
+    { key: 'oncall', title: 'Incidents v2 (PagerDuty-level)', owns: 'oncall/ (NEW app)',
+      pm_focus: 'Severities, on-call schedules, escalation policies, incident timeline, ack/resolve, postmortems, alert routing — wired to the autonomous remediation loop.',
+      build_brief: 'Create a NEW org-scoped `oncall` app: Schedule, EscalationPolicy, OnCallShift, Postmortem, IncidentTimelineEvent (FK to observability.Incident; do NOT modify Incident schema). Render an incident timeline + ack/resolve + postmortem editor (as fragments linkable from the incident page). Subclass OrgScopedModel. Own ONLY oncall/.' },
+    { key: 'enterprise', title: 'Enterprise (RBAC, Audit, API keys)', owns: 'enterprise/ (NEW app)',
+      pm_focus: 'RBAC enforcement helpers (by Membership.role), an audit log of org actions, API keys for programmatic access, org settings.',
+      build_brief: 'Create a NEW org-scoped `enterprise` app: AuditLogEntry (actor, org, action, target, ts) + a record_audit() helper; ApiKey (hashed, scoped to org) + a simple key-auth helper; a permissions module mapping Membership.role -> capabilities + a require_role decorator. Audit log + API keys management UI. Own ONLY enterprise/.' },
+  ],
 }
 
+const SPRINTS = { '1': WIDE, wide: WIDE }
+
 // --------------------------------------------------------------------------- //
-const sprintKey = (args && args.sprint != null) ? String(args.sprint) : '0'
+const sprintKey = (args && args.sprint != null) ? String(args.sprint) : '1'
 const sprint = SPRINTS[sprintKey]
 if (!sprint) throw new Error(`unknown sprint ${sprintKey}; have ${Object.keys(SPRINTS)}`)
 const QA_ROUNDS = (args && args.qa_rounds) || sprint.qa_rounds || 2
@@ -146,9 +129,16 @@ const SYNTH_SCHEMA = {
 
 const ctx =
   `Repo: /Users/james/dev/claude-hackathon (Django 5 + HTMX, package codename "helm"). ` +
-  `Read docs/ROADMAP.md and CONTRACTS.md first. Sprint ${sprintKey} goal: ${sprint.goal} ` +
-  `HARD RULE: never break the autonomous incident->fix loop (deploys.services / observability.services / orchestration.service / agents.services). ` +
-  `Match the existing dark UI design system in static/css/helm.css and extend base.html via {% extends %} only.`
+  `Read docs/ROADMAP.md and CONTRACTS.md first. Sprint ${sprintKey} goal: ${sprint.goal}\n` +
+  `MULTITENANCY CONTRACT (already implemented in accounts/, import it — do NOT modify accounts/models.py): ` +
+  `new tenant models subclass accounts.models.OrgScopedModel (gives an org FK + OrgManager); ` +
+  `existing models add org by subclassing OrgScopedModel; scope request paths with accounts.scoping ` +
+  `(org_required decorator, scoped(Model, request), or Model.objects.for_org(request.org)); the current ` +
+  `org is on request.org (set by CurrentOrgMiddleware). Keep org nullable so the autonomous loop (which ` +
+  `runs without a request) still works — services default org=None.\n` +
+  `HARD RULE: never break the autonomous incident->fix loop (deploys.services / observability.services / ` +
+  `orchestration.service / agents.services contracts stay intact; keep changes additive with fallbacks).\n` +
+  `Match the dark UI design system in static/css/helm.css and extend base.html via {% extends %} only.`
 
 // ---- PLAN ----------------------------------------------------------------- //
 phase('Plan')
@@ -178,9 +168,11 @@ async function buildAndQA(w) {
       : ''
     await agent(
       `${ctx}\n\nYou are a BUILDER. Implement the "${w.title}" workstream. OWN ONLY: ${w.owns}. ` +
-      `Do NOT edit helm/settings.py, helm/urls.py, templates/base.html, or other workstreams' dirs — instead ` +
-      `report needed shared-file changes in wiring_notes. Do NOT run \`python manage.py migrate\`. ` +
-      `${w.sequential ? 'You ARE the cross-cutting foundation; you may makemigrations across apps.' : 'You may makemigrations only for your own new app.'} ` +
+      `Do NOT edit helm/settings.py, helm/urls.py, templates/base.html, accounts/models.py, or other ` +
+      `workstreams' dirs — instead report needed shared-file changes in wiring_notes (INSTALLED_APPS, root ` +
+      `urls include, base.html nav link, requirements). Do NOT run \`python manage.py makemigrations\` or ` +
+      `\`migrate\` — only edit code; the INTEGRATOR generates ALL migrations at the end (this avoids races ` +
+      `between parallel builders). ` +
       `Brief: ${w.build_brief}\n\nRubric to satisfy:\n${rubricText}\n\nTickets:\n${ticketText}${fixNote}\n\n` +
       `When done, run \`python manage.py check\` and confirm you only touched owned files.`,
       { label: `build:${w.key}#${round}`, phase: 'Build', schema: BUILD_SCHEMA },
