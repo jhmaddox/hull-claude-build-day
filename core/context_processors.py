@@ -1,6 +1,9 @@
+from django.conf import settings
+
+
 def helm_globals(request):
     """Inject globals available in every template."""
     return {
-        "HELM_PRODUCT": "Helm",
-        "HELM_TAGLINE": "The autonomous software operating system",
+        "HELM_PRODUCT": settings.HELM_PRODUCT_NAME,
+        "HELM_TAGLINE": settings.HELM_PRODUCT_TAGLINE,
     }

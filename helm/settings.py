@@ -117,6 +117,13 @@ HELM_PORT_END = int(os.environ.get("HELM_PORT_END", "9199"))
 # Public base URL of the control plane (used to build deployment proxy URLs).
 HELM_BASE_URL = os.environ.get("HELM_BASE_URL", "http://localhost:8000")
 
+# User-facing product brand (the code/package/env names stay "helm"/"HELM_*").
+# Rename the product here in one place.
+HELM_PRODUCT_NAME = os.environ.get("HELM_PRODUCT_NAME", "Helm")
+HELM_PRODUCT_TAGLINE = os.environ.get(
+    "HELM_PRODUCT_TAGLINE", "The autonomous software operating system"
+)
+
 # Command used to spawn autonomous Claude agents (headless).
 HELM_CLAUDE_BIN = os.environ.get("HELM_CLAUDE_BIN", "claude")
 HELM_AGENT_MODEL = os.environ.get("HELM_AGENT_MODEL", "claude-opus-4-8")

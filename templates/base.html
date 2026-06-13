@@ -4,7 +4,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>{% block title %}Helm{% endblock %} · Helm</title>
+  <title>{% block title %}{{ HELM_PRODUCT }}{% endblock %} · {{ HELM_PRODUCT }}</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="{% static 'css/helm.css' %}">
@@ -16,7 +16,7 @@
     <aside class="sidebar">
       <a class="brand" href="/">
         <span class="brand-mark">⎈</span>
-        <span class="brand-name">Helm</span>
+        <span class="brand-name">{{ HELM_PRODUCT }}</span>
       </a>
       <nav class="nav">
         <a class="nav-item" href="/" data-match="^/$">
