@@ -157,7 +157,11 @@ const SPRINT2 = {
 const SPRINTS = { '1': WIDE, wide: WIDE, 'fix-ops': FIX_OPS, '2': SPRINT2 }
 
 // --------------------------------------------------------------------------- //
-const sprintKey = (args && args.sprint != null) ? String(args.sprint) : '1'
+// NOTE: pass {sprint:"N"} via args when possible, but default to the sprint we
+// are actively running so a dropped/unforwarded arg can't silently re-run an old
+// sprint. Update DEFAULT_SPRINT when moving to the next sprint.
+const DEFAULT_SPRINT = '2'
+const sprintKey = String((args && args.sprint != null) ? args.sprint : DEFAULT_SPRINT)
 const sprint = SPRINTS[sprintKey]
 if (!sprint) throw new Error(`unknown sprint ${sprintKey}; have ${Object.keys(SPRINTS)}`)
 const QA_ROUNDS = (args && args.qa_rounds) || sprint.qa_rounds || 2
@@ -256,7 +260,8 @@ async function buildAndQA(w) {
       `workstreams' dirs — instead report needed shared-file changes in wiring_notes (INSTALLED_APPS, root ` +
       `urls include, base.html nav link, requirements). Do NOT run \`python manage.py makemigrations\` or ` +
       `\`migrate\` — only edit code; the INTEGRATOR generates ALL migrations at the end (this avoids races ` +
-      `between parallel builders). ` +
+      `between parallel builders). Do NOT run git add/commit/push — leave your ` +
+      `changes UNCOMMITTED in the working tree; the integrator/mayor commits once at the end. ` +
       `Brief: ${w.build_brief}\n\nRubric to satisfy:\n${rubricText}\n\nTickets:\n${ticketText}${fixNote}\n\n` +
       `When done, run \`python manage.py check\` and confirm you only touched owned files.`,
       { label: `build:${w.key}#${round}`, phase: 'Build', schema: BUILD_SCHEMA },
