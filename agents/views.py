@@ -1,24 +1,66 @@
 from django.contrib import messages
+from django.db.models import Count, Q, Sum
 from django.shortcuts import get_object_or_404, redirect, render
 
+from accounts.scoping import org_required, scoped
 from projects.models import Project
 
 from . import services
 from .models import AgentRun
 
 
+@org_required
 def agent_list(request):
-    runs = AgentRun.objects.select_related("project", "worktree", "pull_request")[:100]
+    runs = (
+        AgentRun.objects.for_org(request.org)
+        .select_related("project", "worktree", "pull_request")
+    )
+
+    # Org-scoped filters (?status= ?kind= ?project=).
+    status = request.GET.get("status") or ""
+    kind = request.GET.get("kind") or ""
+    project = request.GET.get("project") or ""
+
+    valid_statuses = {c for c, _ in AgentRun.Status.choices}
+    valid_kinds = {c for c, _ in AgentRun.Kind.choices}
+
+    if status in valid_statuses:
+        runs = runs.filter(status=status)
+    else:
+        status = ""
+    if kind in valid_kinds:
+        runs = runs.filter(kind=kind)
+    else:
+        kind = ""
+    if project.isdigit():
+        runs = runs.filter(project_id=int(project))
+    else:
+        project = ""
+
     ctx = {
-        "runs": runs,
-        "running": AgentRun.objects.filter(status=AgentRun.Status.RUNNING).count(),
+        "runs": runs[:100],
+        "running": AgentRun.objects.for_org(request.org)
+        .filter(status=AgentRun.Status.RUNNING)
+        .count(),
+        "status_choices": AgentRun.Status.choices,
+        "kind_choices": AgentRun.Kind.choices,
+        "projects": scoped(Project, request).order_by("name"),
+        "f_status": status,
+        "f_kind": kind,
+        "f_project": project,
+        "has_filters": bool(status or kind or project),
     }
     return render(request, "agents/list.html", ctx)
 
 
+@org_required
 def agent_new(request):
+    projects = scoped(Project, request).order_by("name")
     if request.method == "POST":
-        project = get_object_or_404(Project, pk=request.POST.get("project"))
+        # Reject launching against a project outside the current org.
+        project = get_object_or_404(
+            scoped(Project, request), pk=request.POST.get("project")
+        )
         kind = request.POST.get("kind") or AgentRun.Kind.FEATURE
         title = (request.POST.get("title") or "").strip()
         prompt = (request.POST.get("prompt") or "").strip()
@@ -36,15 +78,16 @@ def agent_new(request):
             messages.success(request, f"Agent launched: {title}")
             return redirect("agents:detail", pk=run.pk)
     ctx = {
-        "projects": Project.objects.all(),
+        "projects": projects,
         "kinds": AgentRun.Kind.choices,
     }
     return render(request, "agents/new.html", ctx)
 
 
+@org_required
 def agent_detail(request, pk):
     run = get_object_or_404(
-        AgentRun.objects.select_related(
+        AgentRun.objects.for_org(request.org).select_related(
             "project", "worktree", "pull_request", "incident"
         ),
         pk=pk,
@@ -52,7 +95,75 @@ def agent_detail(request, pk):
     return render(request, "agents/detail.html", {"run": run})
 
 
+@org_required
 def agent_stream(request, pk):
     """HTMX fragment: just the live-tailing logs block."""
-    run = get_object_or_404(AgentRun, pk=pk)
-    return render(request, "agents/_stream.html", {"run": run})
+    run = get_object_or_404(AgentRun.objects.for_org(request.org), pk=pk)
+
+    # Support incremental append: client tells us how many bytes it already has.
+    try:
+        since = int(request.GET.get("since") or 0)
+    except (TypeError, ValueError):
+        since = 0
+    full = run.output or ""
+    delta = full[since:] if 0 <= since <= len(full) else full
+    ctx = {"run": run, "delta": delta, "since": len(full), "oob": True}
+    return render(request, "agents/_stream.html", ctx)
+
+
+@org_required
+def agent_roster(request):
+    """Per-kind roster of agent activity for the current org."""
+    runs = AgentRun.objects.for_org(request.org)
+
+    agg = {
+        row["kind"]: row
+        for row in runs.values("kind").annotate(
+            total=Count("id"),
+            running=Count(
+                "id",
+                filter=Q(
+                    status__in=[
+                        AgentRun.Status.QUEUED,
+                        AgentRun.Status.RUNNING,
+                    ]
+                ),
+            ),
+            done=Count("id", filter=Q(status=AgentRun.Status.DONE)),
+            failed=Count("id", filter=Q(status=AgentRun.Status.FAILED)),
+            spend=Sum("cost_usd"),
+        )
+    }
+
+    roster = []
+    for value, label in AgentRun.Kind.choices:
+        row = agg.get(value, {})
+        roster.append(
+            {
+                "kind": value,
+                "label": label,
+                "total": row.get("total", 0) or 0,
+                "running": row.get("running", 0) or 0,
+                "done": row.get("done", 0) or 0,
+                "failed": row.get("failed", 0) or 0,
+                "spend": row.get("spend") or 0,
+            }
+        )
+
+    totals = runs.aggregate(
+        total=Count("id"),
+        running=Count(
+            "id",
+            filter=Q(
+                status__in=[AgentRun.Status.QUEUED, AgentRun.Status.RUNNING]
+            ),
+        ),
+        spend=Sum("cost_usd"),
+    )
+    ctx = {
+        "roster": roster,
+        "total": totals.get("total") or 0,
+        "running": totals.get("running") or 0,
+        "spend": totals.get("spend") or 0,
+    }
+    return render(request, "agents/roster.html", ctx)

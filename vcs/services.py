@@ -79,7 +79,14 @@ def open_pull_request(
 
     head_commit = _git(repo, "rev-parse", head).stdout.strip()
 
+    # Derive the org from the project so request-scoped views can isolate this
+    # PR by tenant. ``getattr`` keeps the autonomous loop safe: if a project
+    # has no ``org`` attribute, or it is ``None`` (the loop path), org stays
+    # None and nothing raises.
+    org = getattr(project, "org", None)
+
     pr = PullRequest.objects.create(
+        org=org,
         project=project,
         worktree=worktree,
         number=next_pr_number(project),

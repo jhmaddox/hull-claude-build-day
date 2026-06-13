@@ -82,6 +82,20 @@ def _clean_env(extra: dict | None = None) -> dict:
     return env
 
 
+def _env_vars_for(environment) -> dict:
+    """Collect this environment's EnvVar rows (key -> raw value) for deploy-time
+    injection into the running app. Raw secret values are used here only — never
+    rendered in a read response."""
+    out: dict[str, str] = {}
+    try:
+        for ev in environment.env_vars.all():
+            if ev.key:
+                out[ev.key] = ev.value or ""
+    except Exception:  # noqa: BLE001 — never let config reads break a deploy
+        pass
+    return out
+
+
 def _ensure_venv(project) -> str:
     """Create the per-project venv once; return path to its python."""
     py = _venv_python(project)
@@ -138,28 +152,36 @@ def _materialize_source(deployment, commit_sha, source_path):
 
 
 def _resolve_head(project, ref) -> str:
-    proc = subprocess.run(
-        ["git", "rev-parse", ref],
-        cwd=project.local_path,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
-        text=True,
-    )
+    if not getattr(project, "local_path", ""):
+        return ""
+    try:
+        proc = subprocess.run(
+            ["git", "rev-parse", ref],
+            cwd=project.local_path,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+        )
+    except Exception:  # noqa: BLE001 — never raise before the Deployment exists
+        return ""
     if proc.returncode == 0:
         return proc.stdout.strip()
     return ""
 
 
 def _commit_message(project, sha) -> str:
-    if not sha:
+    if not sha or not getattr(project, "local_path", ""):
         return ""
-    proc = subprocess.run(
-        ["git", "log", "-1", "--pretty=%s", sha],
-        cwd=project.local_path,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
-        text=True,
-    )
+    try:
+        proc = subprocess.run(
+            ["git", "log", "-1", "--pretty=%s", sha],
+            cwd=project.local_path,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+        )
+    except Exception:  # noqa: BLE001
+        return ""
     return proc.stdout.strip() if proc.returncode == 0 else ""
 
 
@@ -242,7 +264,7 @@ def _health_poll(port: int, timeout: float = 40.0) -> bool:
 def deploy(environment, *, commit_sha: str | None = None, source_path: str | None = None):
     """Build & start a Deployment for ``environment``. See stub docstring."""
     from core.models import Event
-    from .models import Deployment
+    from .models import Deployment, Environment
 
     project = environment.project
 
@@ -251,6 +273,8 @@ def deploy(environment, *, commit_sha: str | None = None, source_path: str | Non
 
     deployment = Deployment.objects.create(
         environment=environment,
+        # Denormalize org from the environment (may be None for the loop).
+        org=getattr(environment, "org", None),
         commit_sha=commit_sha or "",
         commit_message=_commit_message(project, commit_sha),
         status=Deployment.Status.BUILDING,
@@ -283,6 +307,24 @@ def deploy(environment, *, commit_sha: str | None = None, source_path: str | Non
         if prev:
             _append_build(f"stopping previous deployment #{prev.pk}")
             stop(prev)
+
+        # --- Compose runtime branch (additive; falls back to process) -------
+        if (
+            getattr(environment, "runtime", Environment.Runtime.PROCESS)
+            == Environment.Runtime.COMPOSE
+        ):
+            from .compose import runtime as compose_rt
+
+            if compose_rt.docker_available():
+                _append_build("runtime=compose; Docker detected")
+                return _deploy_compose(
+                    deployment, environment, commit_sha, source_path,
+                    _append_build, log_path,
+                )
+            _append_build(
+                "runtime=compose requested but Docker unavailable — "
+                "falling back to process runtime"
+            )
 
         # Materialize source.
         source = _materialize_source(deployment, commit_sha, source_path)
@@ -358,6 +400,9 @@ def deploy(environment, *, commit_sha: str | None = None, source_path: str | Non
                 "DJANGO_ALLOWED_HOSTS": "*",
             }
         )
+        # Inject this environment's configured env-vars / secrets (process
+        # runtime). These override Hull's defaults intentionally.
+        child_env.update(_env_vars_for(environment))
 
         _append_build(f"$ {' '.join(run_parts)}  (PORT={port})")
 
@@ -459,6 +504,121 @@ def restart(deployment):
         deployment.environment,
         commit_sha=deployment.commit_sha or None,
     )
+
+
+def _deploy_compose(deployment, environment, commit_sha, source_path,
+                    append_build, log_path):
+    """Bring up a web+db+worker+redis Docker-Compose stack for ``environment``.
+
+    Sets the same Deployment fields the process path does
+    (status/health/port/live_at/log_path/build_log). Any failure is recorded and
+    the Deployment is returned (callers never see an exception escape deploy()).
+    """
+    from core.models import Event
+    from .models import Deployment
+    from .compose import builder, runtime as compose_rt
+
+    project = environment.project
+    try:
+        source = _materialize_source(deployment, commit_sha, source_path)
+        deployment.source_path = source
+        deployment.save(update_fields=["source_path"])
+        app_dir = (
+            os.path.join(source, project.app_subdir) if project.app_subdir else source
+        )
+        append_build(f"source: {source}\napp dir: {app_dir}")
+
+        port = allocate_port()
+        append_build(f"allocated host port {port}")
+
+        has_dockerfile = os.path.isfile(os.path.join(app_dir, "Dockerfile"))
+        container_port = builder.DEFAULT_CONTAINER_PORT
+        extra_env = _env_vars_for(environment)
+
+        compose_spec = builder.build_compose(
+            project_slug=project.slug,
+            env_name=environment.name,
+            host_port=port,
+            container_port=container_port,
+            framework=getattr(project, "framework", "generic"),
+            run_command=getattr(project, "run_command", ""),
+            extra_env=extra_env,
+            has_dockerfile=has_dockerfile,
+        )
+        dockerfile = None
+        if not has_dockerfile:
+            dockerfile = builder.generate_dockerfile(
+                getattr(project, "framework", "generic"),
+                app_subdir=project.app_subdir,
+                install_command=getattr(project, "install_command", ""),
+                container_port=container_port,
+            )
+            append_build("no repo Dockerfile — generated one")
+
+        compose_path = compose_rt.write_stack_files(app_dir, compose_spec, dockerfile)
+        append_build(f"wrote compose spec: {compose_path}")
+
+        pname = compose_rt.compose_project_name(project.slug, environment.name)
+        ok = compose_rt.compose_up(app_dir, compose_path, pname, append_build)
+        if not ok:
+            raise RuntimeError("docker compose up failed")
+
+        healthy = _health_poll(port, timeout=60.0)
+        deployment.status = Deployment.Status.LIVE
+        deployment.health = (
+            Deployment.Health.HEALTHY if healthy else Deployment.Health.UNKNOWN
+        )
+        deployment.live_at = timezone.now()
+        deployment.port = port
+        deployment.save(
+            update_fields=["status", "health", "live_at", "port"]
+        )
+        environment.port = port
+        environment.save(update_fields=["port"])
+
+        Event.log(
+            f"deployed {environment.name} live (compose)",
+            project=project,
+            icon="deploy",
+            level="success",
+            url=deployment.public_url,
+        )
+        return deployment
+    except Exception as exc:  # noqa: BLE001 — never raise out of deploy()
+        append_build(f"ERROR (compose): {exc}")
+        deployment.status = Deployment.Status.FAILED
+        deployment.error = str(exc)
+        deployment.save(update_fields=["status", "error"])
+        Event.log(
+            f"compose deploy failed for {environment.name}: {exc}",
+            project=project,
+            icon="x",
+            level="error",
+        )
+        return deployment
+
+
+def rollback(environment, to_deployment):
+    """Append-only rollback: deploy a prior SUCCESSFUL deployment's
+    commit/source as a NEW Deployment. The old row's pk/status is never mutated.
+
+    Returns the new Deployment. Emits a core.models.Event.log(icon='deploy').
+    """
+    from core.models import Event
+
+    Event.log(
+        f"rolling back {environment.name} to deployment #{to_deployment.pk} "
+        f"({(to_deployment.commit_sha or '')[:8]})",
+        project=environment.project,
+        icon="deploy",
+        level="info",
+    )
+    new_dep = deploy(
+        environment,
+        commit_sha=to_deployment.commit_sha or None,
+        source_path=to_deployment.source_path or None,
+    )
+    return new_dep
 
 
 def health_check(deployment) -> bool:

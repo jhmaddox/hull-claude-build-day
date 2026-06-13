@@ -1,0 +1,77 @@
+{% extends "base.html" %}
+{% load helm_extras %}
+{% block title %}{% if monitor.pk %}Edit monitor{% else %}New monitor{% endif %}{% endblock %}
+{% block crumbs %}<a class="link" href="/obs/">Observability</a> / <a class="link" href="/obs/monitors/">Monitors</a> <span class="muted">/ {% if monitor.pk %}Edit{% else %}New{% endif %}</span>{% endblock %}
+
+{% block content %}
+<div class="title-xl mb-16">{% if monitor.pk %}Edit monitor{% else %}New monitor{% endif %}</div>
+
+<div class="card" style="max-width:680px;">
+  <form method="post" action="{% if monitor.pk %}/obs/monitors/{{ monitor.pk }}/edit/{% else %}/obs/monitors/new/{% endif %}">
+    {% csrf_token %}
+    <div class="field">
+      <div class="label muted small">NAME (optional)</div>
+      <input type="text" name="name" value="{{ monitor.name }}" placeholder="High error rate on prod">
+    </div>
+
+    <div class="field">
+      <div class="label muted small">DEPLOYMENT</div>
+      <select name="deployment">
+        <option value="">(any / all deployments)</option>
+        {% for d in deployments %}
+        <option value="{{ d.pk }}" {% if monitor.deployment_id == d.pk %}selected{% endif %}>{{ d.environment.project.name }} / {{ d.environment.name }} ({{ d.commit_sha|slice:":8" }})</option>
+        {% endfor %}
+      </select>
+    </div>
+
+    <div class="grid grid-3">
+      <div class="field">
+        <div class="label muted small">METRIC</div>
+        <select name="metric">
+          {% for val, label in metric_choices %}
+          <option value="{{ val }}" {% if monitor.metric == val %}selected{% endif %}>{{ label }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="field">
+        <div class="label muted small">COMPARATOR</div>
+        <select name="comparator">
+          {% for val, label in comparator_choices %}
+          <option value="{{ val }}" {% if monitor.comparator == val %}selected{% endif %}>{{ label }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="field">
+        <div class="label muted small">THRESHOLD</div>
+        <input type="number" step="any" name="threshold" value="{{ monitor.threshold|default:0 }}" required>
+      </div>
+    </div>
+
+    <div class="grid grid-3">
+      <div class="field">
+        <div class="label muted small">WINDOW (minutes)</div>
+        <input type="number" name="window_minutes" value="{{ monitor.window_minutes|default:5 }}" min="1" required>
+      </div>
+      <div class="field">
+        <div class="label muted small">SEVERITY</div>
+        <select name="severity">
+          {% for val, label in severity_choices %}
+          <option value="{{ val }}" {% if monitor.severity == val %}selected{% endif %}>{{ label }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="field">
+        <div class="label muted small">ENABLED</div>
+        <label class="row" style="gap:8px;align-items:center;margin-top:8px;">
+          <input type="checkbox" name="enabled" {% if monitor.enabled or not monitor.pk %}checked{% endif %}> active
+        </label>
+      </div>
+    </div>
+
+    <div class="row" style="gap:8px;">
+      <button class="btn btn-primary" type="submit">{% if monitor.pk %}Save{% else %}Create monitor{% endif %}</button>
+      <a class="btn btn-ghost" href="/obs/monitors/">Cancel</a>
+    </div>
+  </form>
+</div>
+{% endblock %}

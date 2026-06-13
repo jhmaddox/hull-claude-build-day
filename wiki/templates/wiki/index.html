@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+{% block title %}Docs{% endblock %}
+{% block head %}{% include "wiki/_wiki_styles.html" %}{% endblock %}
+{% block crumbs %}<a class="link" href="{% url 'wiki:index' %}">Docs</a>{% endblock %}
+{% block actions %}
+  <a class="btn btn-ghost" href="{% url 'wiki:space_new' %}">+ Space</a>
+  <a class="btn btn-primary" href="{% url 'wiki:page_new' %}">+ Page</a>
+{% endblock %}
+
+{% block content %}
+<div class="row between mb-16">
+  <div>
+    <div class="title-xl">Docs &amp; Wiki</div>
+    <div class="muted">{{ total_pages }} page{{ total_pages|pluralize }} across {{ spaces|length }} space{{ spaces|length|pluralize }} — the knowledge vault.</div>
+  </div>
+</div>
+
+<form class="card mb-16" method="get" action="{% url 'wiki:search' %}"
+      hx-get="{% url 'wiki:search' %}" hx-target="#wiki-search-results" hx-trigger="keyup changed delay:300ms, submit"
+      hx-push-url="false" style="padding:12px 14px;">
+  <input type="search" name="q" placeholder="Search docs…" autocomplete="off"
+         style="width:100%; background:transparent; border:none; outline:none; font-size:15px; color:inherit;">
+</form>
+<div id="wiki-search-results"></div>
+
+<div class="grid grid-auto mb-24">
+  {% for space in spaces %}
+  <a class="card col" href="{{ space.get_absolute_url }}" style="gap:8px;">
+    <div class="row between">
+      <strong style="font-size:15px;">{{ space.icon }} {{ space.name }}</strong>
+      <span class="badge badge-neutral">{{ space.num_pages }} page{{ space.num_pages|pluralize }}</span>
+    </div>
+    {% if space.description %}<div class="muted small">{{ space.description|truncatechars:100 }}</div>{% endif %}
+  </a>
+  {% empty %}
+  <div class="card empty"><div class="big">📚</div>No spaces yet. <a class="link" href="{% url 'wiki:space_new' %}">Create one</a> to start your wiki.</div>
+  {% endfor %}
+</div>
+
+{% if recent %}
+<div class="card">
+  <div class="card-head">Recently updated</div>
+  <div class="list">
+    {% for page in recent %}
+    <a class="list-row" href="{% url 'wiki:page' page.pk %}">
+      <div class="grow">
+        <strong>{{ page.title }}</strong>
+        <div class="muted small">{% if page.space %}{{ page.space.name }} · {% endif %}updated {{ page.updated_at|timesince }} ago</div>
+      </div>
+    </a>
+    {% endfor %}
+  </div>
+</div>
+{% endif %}
+{% endblock %}

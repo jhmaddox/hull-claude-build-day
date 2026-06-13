@@ -1,7 +1,14 @@
 {% load helm_extras %}
-<div class="logs" id="logs-{{ deployment.pk }}"
-     hx-get="/obs/deployment/{{ deployment.pk }}/logs/"
-     hx-trigger="every 2s"
+<div id="logs-{{ deployment.pk }}"
+     hx-get="/obs/deployment/{{ deployment.pk }}/logs/{% if querystring %}?{{ querystring }}{% endif %}"
+     hx-trigger="every 3s"
      hx-swap="outerHTML">
-{% for l in logs %}<div class="{% if l.level == 'error' %}l-error{% elif l.level == 'warning' %}l-warn{% elif l.level == 'info' %}l-info{% else %}l-ok{% endif %}">{{ l.message }}</div>{% empty %}<div class="l-info">No log lines yet.</div>{% endfor %}
+  <div class="logs" style="max-height:60vh;overflow:auto;">
+{% for l in logs %}<div class="{% if l.level == 'error' %}l-error{% elif l.level == 'warning' %}l-warn{% elif l.level == 'info' %}l-info{% else %}l-ok{% endif %}">{% if l.method %}<span class="mono">{{ l.method }} {{ l.path }}{% if l.status_code %} {{ l.status_code }}{% endif %}{% if l.latency_ms %} {{ l.latency_ms }}ms{% endif %}</span> {% endif %}{{ l.message }}</div>{% empty %}<div class="l-info">No log lines match the current filters.</div>{% endfor %}
+  </div>
+  {% if page %}
+  <div class="row between mt-8 muted small">
+    <span>Page {{ page.number }} of {{ page.paginator.num_pages }} · {{ page.paginator.count }} lines</span>
+  </div>
+  {% endif %}
 </div>

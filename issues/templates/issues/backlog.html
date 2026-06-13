@@ -1,0 +1,30 @@
+{% extends "base.html" %}
+{% load helm_extras %}
+{% block title %}Issues · Backlog{% endblock %}
+{% block crumbs %}<span class="muted">Issues</span> <span class="muted">/ Backlog</span>{% endblock %}
+{% block actions %}
+  <a class="btn btn-ghost btn-sm" href="{% url 'issues:board' %}">Board</a>
+  <a class="btn btn-primary btn-sm" href="{% url 'issues:ticket_new' %}">+ New Ticket</a>
+{% endblock %}
+
+{% block content %}
+<div class="title-xl mb-16">Backlog</div>
+<div class="card pad-0 issues-backlog">
+  <div class="list">
+    {% for t in tickets %}
+    <a class="list-row" href="{% url 'issues:ticket' t.pk %}" style="text-decoration:none;">
+      <span class="mono small muted" style="width:84px;">{{ t.key }}</span>
+      <span class="badge {{ t.status|status_badge }}">{{ t.get_status_display }}</span>
+      <span class="grow" style="font-weight:600;">{{ t.title }}</span>
+      <span class="badge badge-neutral">{{ t.get_type_display }}</span>
+      <span class="badge {{ t.priority|status_badge }}">{{ t.get_priority_display }}</span>
+      <span class="small muted" style="width:120px;text-align:right;">
+        {% if t.assignee %}{{ t.assignee.get_username }}{% elif t.assignee_name %}{{ t.assignee_name }}{% else %}—{% endif %}
+      </span>
+    </a>
+    {% empty %}
+    <div class="empty"><div class="big">▤</div>No tickets yet. <a class="link" href="{% url 'issues:ticket_new' %}">File one</a>.</div>
+    {% endfor %}
+  </div>
+</div>
+{% endblock %}

@@ -1,0 +1,21 @@
+{% extends "base.html" %}
+{% load helm_extras %}
+{% block title %}Agent Activity{% endblock %}
+{% block crumbs %}<a class="muted" href="/orchestration/">Orchestration</a> <span class="faint">/</span> Activity{% endblock %}
+
+{% block content %}
+<div class="row between mb-16">
+  <div>
+    <div class="title-xl">Agent Activity</div>
+    <div class="muted">What the agent org is doing right now — live workflows and running agents.</div>
+  </div>
+  <span class="pill pill-live"><span class="dot dot-live"></span> live</span>
+</div>
+
+<div id="activity-panel"
+     hx-get="/orchestration/activity/panel/"
+     hx-trigger="every 2s"
+     hx-swap="innerHTML">
+  {% include "orchestration/_activity_panel.html" %}
+</div>
+{% endblock %}

@@ -19,4 +19,8 @@ urlpatterns = [
     path("vcs/", include("vcs.urls")),
     path("obs/", include("observability.urls")),
     path("orchestration/", include("orchestration.urls")),
+    path("issues/", include("issues.urls")),
+    path("wiki/", include("wiki.urls")),
+    path("oncall/", include("oncall.urls")),
+    path("enterprise/", include("enterprise.urls")),
 ]

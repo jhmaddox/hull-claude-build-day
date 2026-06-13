@@ -9,7 +9,10 @@
     <div class="title-xl">Observability</div>
     <div class="muted">Live telemetry from every running deployment — requests, errors, and logs.</div>
   </div>
-  <a class="btn" href="/obs/incidents/">⚠ Incidents</a>
+  <div class="row" style="gap:8px;">
+    <a class="btn btn-ghost" href="/obs/monitors/">🔔 Monitors</a>
+    <a class="btn" href="/obs/incidents/">⚠ Incidents</a>
+  </div>
 </div>
 
 {% if open_incidents %}
@@ -60,7 +63,8 @@
     {% else %}
     <div class="muted small">No errors. All green.</div>
     {% endif %}
-    <div class="mt-8">
+    <div class="mt-8 row" style="gap:8px;">
+      <a class="btn btn-sm btn-ghost" href="/obs/deployment/{{ c.dep.pk }}/">📊 Dashboard</a>
       <a class="btn btn-sm btn-ghost" href="/obs/deployment/{{ c.dep.pk }}/logs/">View logs →</a>
     </div>
   </div>

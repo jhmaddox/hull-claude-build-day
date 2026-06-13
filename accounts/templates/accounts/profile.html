@@ -1,0 +1,33 @@
+{% extends "accounts/_account_base.html" %}
+{% block title %}Profile{% endblock %}
+{% block crumbs %}<a class="link" href="{% url 'accounts:members' %}">Account</a> <span class="muted">/ Profile</span>{% endblock %}
+{% block account_title %}Your profile{% endblock %}
+
+{% block account_body %}
+<div class="grid grid-2">
+  <div class="card">
+    <div class="card-head"><div style="font-weight:600;">Personal details</div></div>
+    <form method="post" action="{% url 'accounts:profile' %}">
+      {% csrf_token %}
+      <input type="hidden" name="form" value="profile">
+      <div class="field"><label>Username</label><input type="text" value="{{ u.username }}" disabled></div>
+      <div class="field"><label>First name</label><input type="text" name="first_name" value="{{ u.first_name }}"></div>
+      <div class="field"><label>Last name</label><input type="text" name="last_name" value="{{ u.last_name }}"></div>
+      <div class="field"><label>Email</label><input type="text" name="email" value="{{ u.email }}"></div>
+      <button class="btn btn-primary" type="submit">Save profile</button>
+    </form>
+  </div>
+
+  <div class="card">
+    <div class="card-head"><div style="font-weight:600;">Change password</div></div>
+    <form method="post" action="{% url 'accounts:profile' %}">
+      {% csrf_token %}
+      <input type="hidden" name="form" value="password">
+      <div class="field"><label>Current password</label><input type="password" name="current_password"></div>
+      <div class="field"><label>New password</label><input type="password" name="new_password"></div>
+      <div class="field"><label>Confirm new password</label><input type="password" name="confirm_password"></div>
+      <button class="btn btn-primary" type="submit">Update password</button>
+    </form>
+  </div>
+</div>
+{% endblock %}

@@ -51,9 +51,23 @@ def _run(name, fn, *, project=None, ref_type="", ref_id=None):
     from .models import WorkflowRun
 
     use_temporal = _temporal_available()
+
+    # Org stamping (additive, fallback-safe). Resolve the org best-effort so a
+    # request-less autonomous run still records org=None and never raises.
+    org = None
+    try:
+        org = getattr(project, "org", None)
+        if org is None:
+            from accounts.models import get_current_org
+
+            org = get_current_org()
+    except Exception:  # noqa: BLE001
+        org = None
+
     wf = WorkflowRun.objects.create(
         name=name,
         status=WorkflowRun.Status.RUNNING,
+        org=org,
         project=project,
         ref_type=ref_type,
         ref_id=ref_id,
@@ -67,6 +81,26 @@ def _run(name, fn, *, project=None, ref_type="", ref_id=None):
         icon="deploy",
     )
 
+    def _save_wf(fields):
+        """Persist WorkflowRun bookkeeping, tolerating transient DB locks.
+
+        On sqlite (tests + the demo) a background thread's commit can race the
+        main connection and raise ``database is locked``. Retrying keeps a
+        successful run from being mis-recorded as FAILED — loop-safe.
+        """
+        from django.db import OperationalError
+
+        for attempt in range(8):
+            try:
+                wf.save(update_fields=fields)
+                return
+            except OperationalError:
+                if attempt == 7:
+                    raise
+                import time
+
+                time.sleep(0.05)
+
     def _body():
         # Each thread needs its own DB connection lifecycle.
         try:
@@ -75,7 +109,7 @@ def _run(name, fn, *, project=None, ref_type="", ref_id=None):
             wf.ended_at = timezone.now()
             if result is not None and not wf.detail:
                 wf.detail = str(result)[:10000]
-            wf.save(update_fields=["status", "ended_at", "detail"])
+            _save_wf(["status", "ended_at", "detail"])
             Event.log(
                 f"workflow {name} completed",
                 project=project,
@@ -88,7 +122,10 @@ def _run(name, fn, *, project=None, ref_type="", ref_id=None):
             wf.status = WorkflowRun.Status.FAILED
             wf.ended_at = timezone.now()
             wf.detail = (wf.detail + "\n" + err)[:10000]
-            wf.save(update_fields=["status", "ended_at", "detail"])
+            try:
+                _save_wf(["status", "ended_at", "detail"])
+            except Exception:  # noqa: BLE001
+                pass
             Event.log(
                 f"workflow {name} failed: {exc}",
                 project=project,
@@ -420,7 +457,7 @@ def _remediate_pipeline(incident_id: int) -> str:
     inc = Incident.objects.select_related("project", "deployment").get(pk=incident_id)
     project = inc.project
 
-    def ev(verb, level="info", icon="fix", url=""):
+    def ev(verb, level="info", icon="fix", url="", oncall_kind=None):
         Event.log(
             verb,
             project=project,
@@ -429,6 +466,14 @@ def _remediate_pipeline(incident_id: int) -> str:
             icon=icon,
             url=url or inc.get_absolute_url(),
         )
+        # oncall (Incidents v2): mirror each pipeline step into the first-class
+        # timeline. Best-effort, lazy import, NEVER blocks remediation.
+        try:
+            from oncall.services import timeline as _oncall_tl
+
+            _oncall_tl.record(inc, oncall_kind or "agent", verb, actor="claude-sre")
+        except Exception as _exc:  # noqa: BLE001
+            print(f"[helm-orch] oncall timeline hook failed: {_exc}")
 
     # 1. acknowledge -> remediating ----------------------------------------
     inc.status = Incident.Status.ACKNOWLEDGED
@@ -541,5 +586,13 @@ def _remediate_pipeline(incident_id: int) -> str:
         f"INC-{inc.number} RESOLVED autonomously — fix shipped to production 🎉",
         level="success",
         icon="check",
+        oncall_kind="resolved",
     )
+    # oncall (Incidents v2): best-effort auto-stub postmortem for sev1/sev2.
+    try:
+        from oncall.services import loop as _oncall_loop
+
+        _oncall_loop.maybe_create_stub_postmortem(inc)
+    except Exception as _exc:  # noqa: BLE001 - never block remediation
+        print(f"[helm-orch] oncall postmortem hook failed: {_exc}")
     return f"INC-{inc.number}: resolved via PR #{pr.number}"

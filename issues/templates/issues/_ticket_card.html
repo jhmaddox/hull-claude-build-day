@@ -1,0 +1,18 @@
+{% load helm_extras %}
+<a class="card issues-card" href="{% url 'issues:ticket' ticket.pk %}" style="display:block;padding:12px 14px;margin-bottom:10px;text-decoration:none;">
+  <div class="row between">
+    <span class="mono small muted">{{ ticket.key }}</span>
+    <span class="badge {{ ticket.priority|status_badge }}">{{ ticket.get_priority_display }}</span>
+  </div>
+  <div class="mt-8" style="font-weight:600;">{{ ticket.title }}</div>
+  <div class="row gap-6 mt-8" style="flex-wrap:wrap;">
+    <span class="badge badge-neutral">{{ ticket.get_type_display }}</span>
+    {% for l in ticket.labels.all %}<span class="badge {{ l.color }}">{{ l.name }}</span>{% endfor %}
+    {% if ticket.incident_id %}<span class="badge badge-danger">⚠ INC</span>{% endif %}
+    {% if ticket.pull_request_id %}<span class="badge badge-info">⑂ PR</span>{% endif %}
+  </div>
+  <div class="row between mt-8 small muted">
+    <span>{% if ticket.assignee %}{{ ticket.assignee.get_username }}{% elif ticket.assignee_name %}{{ ticket.assignee_name }}{% else %}unassigned{% endif %}</span>
+    {% if ticket.story_points %}<span class="kbd">{{ ticket.story_points }}</span>{% endif %}
+  </div>
+</a>

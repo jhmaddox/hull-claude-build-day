@@ -1,0 +1,15 @@
+{% load helm_extras %}
+{% comment %}
+Live CI badge fragment (polled by detail.html via HTMX).
+While pending/running it carries an `every 2s` trigger; once CI settles the
+returned badge has NO trigger, so HTMX stops polling automatically.
+{% endcomment %}
+{% if pr.ci_status == 'pending' or pr.ci_status == 'running' %}
+<span id="ci-badge"
+      class="badge {{ pr.ci_status|status_badge }}"
+      hx-get="{% url 'vcs:pr_ci_status' pr.pk %}"
+      hx-trigger="every 2s"
+      hx-swap="outerHTML">{{ pr.get_ci_status_display }}</span>
+{% else %}
+<span id="ci-badge" class="badge {{ pr.ci_status|status_badge }}">{{ pr.get_ci_status_display }}</span>
+{% endif %}

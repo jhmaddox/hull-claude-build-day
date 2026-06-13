@@ -1,0 +1,18 @@
+{% if q %}
+  {% if results %}
+  <div class="card">
+    <div class="list">
+      {% for page in results %}
+      <a class="list-row" href="{% url 'wiki:page' page.pk %}">
+        <div class="grow">
+          <strong>{{ page.title }}</strong>
+          <div class="muted small">{% if page.space %}{{ page.space.name }} · {% endif %}{{ page.excerpt }}</div>
+        </div>
+      </a>
+      {% endfor %}
+    </div>
+  </div>
+  {% else %}
+  <div class="card empty"><div class="big">🔍</div>No pages match “{{ q }}”.</div>
+  {% endif %}
+{% endif %}

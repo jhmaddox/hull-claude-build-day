@@ -1,0 +1,19 @@
+{% load helm_extras %}
+<div class="feed" id="oncall-timeline"
+     hx-get="/oncall/incidents/{{ incident.pk }}/timeline/"
+     hx-trigger="every 3s"
+     hx-swap="outerHTML">
+  {% for e in entries %}
+  <div class="feed-item">
+    <div class="feed-ico {{ e.level }}">{{ e.icon|feed_icon }}</div>
+    <div class="feed-body grow">
+      <div><strong>{{ e.actor }}</strong>
+        <span class="badge badge-neutral">{{ e.get_kind_display }}</span>
+        {{ e.message }}</div>
+      <div class="feed-time">{{ e.created_at|timesince }} ago</div>
+    </div>
+  </div>
+  {% empty %}
+  <div class="empty small">No timeline entries yet.</div>
+  {% endfor %}
+</div>

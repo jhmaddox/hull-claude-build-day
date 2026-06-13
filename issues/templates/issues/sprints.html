@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+{% load helm_extras %}
+{% block title %}Issues · Sprints{% endblock %}
+{% block crumbs %}<a class="link" href="{% url 'issues:board' %}">Issues</a> <span class="muted">/ Sprints</span>{% endblock %}
+{% block actions %}<a class="btn btn-ghost btn-sm" href="{% url 'issues:board' %}">Board</a>{% endblock %}
+
+{% block content %}
+<div class="title-xl mb-16">Sprints</div>
+<div class="card pad-0 issues-sprints">
+  <div class="list">
+    {% for r in rows %}
+    <a class="list-row" href="{% url 'issues:sprint' r.sprint.pk %}" style="text-decoration:none;">
+      <span class="badge {{ r.sprint.status|status_badge }}">{{ r.sprint.get_status_display }}</span>
+      <span class="grow" style="font-weight:600;">{{ r.sprint.name }}</span>
+      <span class="muted small">{{ r.done }}/{{ r.total }} done</span>
+      <span class="kbd">{{ r.done|pct:r.total }}%</span>
+    </a>
+    {% empty %}
+    <div class="empty"><div class="big">⟳</div>No sprints yet.</div>
+    {% endfor %}
+  </div>
+</div>
+{% endblock %}

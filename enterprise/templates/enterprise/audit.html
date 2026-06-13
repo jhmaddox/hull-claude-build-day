@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+{% block title %}Audit log{% endblock %}
+{% block crumbs %}<span class="muted">Enterprise</span> / <span>Audit log</span>{% endblock %}
+{% block content %}
+  <div class="card mb-16">
+    <div class="card-head"><h2 class="title-xl">Audit log</h2></div>
+    <form method="get" class="row gap-8">
+      <select class="field" name="action">
+        <option value="">All actions</option>
+        {% for a in actions %}
+          <option value="{{ a }}" {% if a == f_action %}selected{% endif %}>{{ a }}</option>
+        {% endfor %}
+      </select>
+      <input class="field grow" type="text" name="actor" value="{{ f_actor }}" placeholder="filter by actor">
+      <button class="btn btn-ghost" type="submit">Filter</button>
+      <a class="btn btn-ghost" href="{% url 'enterprise:audit' %}">Clear</a>
+    </form>
+  </div>
+
+  <div class="card">
+    {% if rows %}
+      <table class="table">
+        <thead>
+          <tr><th>When</th><th>Actor</th><th>Action</th><th>Target</th><th>IP</th></tr>
+        </thead>
+        <tbody>
+          {% for r in rows %}
+            <tr>
+              <td class="muted small nowrap">{{ r.created_at|date:"M j, H:i:s" }}</td>
+              <td><span class="badge badge-neutral">{{ r.actor }}</span></td>
+              <td class="mono">{{ r.action }}</td>
+              <td class="muted small">{{ r.target_repr }}{% if r.target_type %} <span class="faint">({{ r.target_type }})</span>{% endif %}</td>
+              <td class="mono faint small">{{ r.ip|default:"—" }}</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    {% else %}
+      <div class="empty muted">No audit entries match.</div>
+    {% endif %}
+  </div>
+{% endblock %}

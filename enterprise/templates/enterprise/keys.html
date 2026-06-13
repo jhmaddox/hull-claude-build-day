@@ -1,0 +1,57 @@
+{% extends "base.html" %}
+{% load enterprise_extras %}
+{% block title %}API keys{% endblock %}
+{% block crumbs %}<span class="muted">Enterprise</span> / <span>API keys</span>{% endblock %}
+{% block content %}
+  <div class="card mb-16">
+    <div class="card-head"><h2 class="title-xl">Create API key</h2></div>
+    <p class="muted small">
+      Tokens start with <span class="mono">hull_</span> and are shown once. Use as
+      <span class="mono">Authorization: Bearer hull_…</span> against
+      <span class="mono">/enterprise/api/whoami/</span>.
+    </p>
+    <form method="post" action="{% url 'enterprise:key_create' %}" class="row gap-8 mt-8">
+      {% csrf_token %}
+      <input class="field grow" type="text" name="name" placeholder="e.g. CI deploy bot" required>
+      <button class="btn btn-primary" type="submit">Create key</button>
+    </form>
+  </div>
+
+  <div class="card mb-16">
+    <div class="card-head"><h2 class="title-xl">Active keys</h2></div>
+    {% if active_keys %}
+      <div class="list">
+        {% for k in active_keys %}
+          <div class="list-row">
+            <span class="value">{{ k.name }} <span class="mono muted">{{ k.prefix }}</span></span>
+            <span class="muted small">{% if k.last_used_at %}used {{ k.last_used_at|timesince }} ago{% else %}never used{% endif %}</span>
+            <span class="muted small">created {{ k.created_at|date:"M j, Y" }}</span>
+            <form method="post" action="{% url 'enterprise:key_revoke' k.pk %}">
+              {% csrf_token %}
+              <button class="btn btn-sm btn-danger" type="submit">Revoke</button>
+            </form>
+          </div>
+        {% endfor %}
+      </div>
+    {% else %}
+      <div class="empty muted">No active API keys.</div>
+    {% endif %}
+  </div>
+
+  <div class="card">
+    <div class="card-head"><h2 class="title-xl">Revoked keys</h2></div>
+    {% if revoked_keys %}
+      <div class="list">
+        {% for k in revoked_keys %}
+          <div class="list-row">
+            <span class="value muted">{{ k.name }} <span class="mono">{{ k.prefix }}</span></span>
+            <span class="badge badge-danger">revoked</span>
+            <span class="muted small">{{ k.revoked_at|date:"M j, Y" }}</span>
+          </div>
+        {% endfor %}
+      </div>
+    {% else %}
+      <div class="empty muted">No revoked keys.</div>
+    {% endif %}
+  </div>
+{% endblock %}

@@ -11,7 +11,7 @@
       <div class="title-xl">#{{ pr.number }} · {{ pr.title }}</div>
     </div>
     <div class="muted">
-      {{ pr.project.name }} · <span class="mono">{{ pr.head_branch }} → {{ pr.base_branch }}</span> · by {{ pr.author }}
+      {{ pr.project.name }} · <span class="mono">{{ pr.head_branch }} → {{ pr.base_branch }}</span> · by {{ pr.author }} · opened {{ pr.created_at|timesince }} ago
     </div>
   </div>
   <div class="row gap-8">
@@ -21,8 +21,27 @@
     </form>
     <form method="post" action="{% url 'vcs:pr_merge' pr.pk %}">
       {% csrf_token %}
-      <button class="btn btn-success" type="submit" {% if pr.status != 'open' %}disabled{% endif %}>⑃ Merge</button>
+      <button class="btn btn-success" type="submit"
+              {% if not mergeable %}disabled title="{{ merge_blocked_reason }}"{% endif %}>⑃ Merge</button>
     </form>
+  </div>
+</div>
+
+{% if not mergeable and merge_blocked_reason %}
+<div class="card mb-16" style="border-color: rgba(251,191,36,.3);">
+  <div class="row gap-8 muted small">⚠ Merge blocked: {{ merge_blocked_reason }}</div>
+</div>
+{% endif %}
+
+<div class="card mb-16">
+  <div class="row between gap-8">
+    <div class="muted small">Permalink</div>
+    <div class="row gap-8 grow" style="justify-content:flex-end;">
+      <input id="pr-permalink" class="mono small" readonly value="{{ permalink }}"
+             style="flex:1; max-width:520px; background:var(--panel-2); color:var(--muted); border:1px solid var(--border); border-radius:6px; padding:6px 10px;">
+      <button class="btn btn-sm" type="button" id="copy-permalink-btn"
+              onclick="helmCopyPermalink(this)">Copy</button>
+    </div>
   </div>
 </div>
 
@@ -30,7 +49,7 @@
   <div class="card stat"><div class="label">Additions</div><div class="value success">+{{ pr.additions }}</div></div>
   <div class="card stat"><div class="label">Deletions</div><div class="value danger">−{{ pr.deletions }}</div></div>
   <div class="card stat"><div class="label">Files</div><div class="value">{{ pr.files_changed }}</div></div>
-  <div class="card stat"><div class="label">CI</div><div class="value" style="font-size:20px;"><span class="badge {{ pr.ci_status|status_badge }}">{{ pr.get_ci_status_display }}</span></div></div>
+  <div class="card stat"><div class="label">CI</div><div class="value" style="font-size:20px;">{% include "vcs/_ci_status.html" %}</div></div>
 </div>
 
 <div class="grid" style="grid-template-columns: 1.7fr 1fr;">
@@ -42,12 +61,20 @@
     </div>
     {% endif %}
 
-    <div class="card pad-0">
-      <div class="card-head" style="padding:16px 18px 0;"><h2>Diff</h2><span class="muted small mono">{{ pr.head_commit|slice:":8" }}</span></div>
+    <div class="card-head"><h2>Changed files <span class="muted small">({{ pr.files_changed }})</span></h2><span class="muted small mono">{{ pr.head_commit|slice:":8" }}</span></div>
+    {% for f in diff_files %}
+    <details class="card pad-0 mb-16" {% if forloop.first %}open{% endif %}>
+      <summary class="card-head" style="padding:12px 16px; cursor:pointer; list-style:none;">
+        <span class="mono small">{{ f.path }}</span>
+        <span class="mono small"><span style="color:var(--success)">+{{ f.additions }}</span> <span style="color:var(--danger)">−{{ f.deletions }}</span></span>
+      </summary>
       <div style="padding:0 14px 14px;">
-        {{ diff_html }}
+        <div class="diff">{{ f.html }}</div>
       </div>
-    </div>
+    </details>
+    {% empty %}
+    <div class="card"><div class="empty small">No changes.</div></div>
+    {% endfor %}
   </div>
 
   <div class="col">
@@ -79,4 +106,24 @@
     {% endif %}
   </div>
 </div>
+
+<script>
+function helmCopyPermalink(btn) {
+  var input = document.getElementById('pr-permalink');
+  if (!input) return;
+  var text = input.value;
+  var done = function () {
+    var orig = btn.textContent;
+    btn.textContent = 'Copied!';
+    setTimeout(function () { btn.textContent = orig; }, 1500);
+  };
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(text).then(done, function () {
+      input.select(); document.execCommand('copy'); done();
+    });
+  } else {
+    input.select(); document.execCommand('copy'); done();
+  }
+}
+</script>
 {% endblock %}

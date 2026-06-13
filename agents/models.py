@@ -1,8 +1,10 @@
 from django.db import models
 from django.utils import timezone
 
+from accounts.models import OrgScopedModel
 
-class Worktree(models.Model):
+
+class Worktree(OrgScopedModel):
     """An isolated git worktree where an agent (or human) works on a branch."""
 
     class Status(models.TextChoices):
@@ -31,7 +33,7 @@ class Worktree(models.Model):
         return f"{self.project.slug}:{self.branch}"
 
 
-class AgentRun(models.Model):
+class AgentRun(OrgScopedModel):
     """A headless Claude agent session executing a task in a worktree."""
 
     class Kind(models.TextChoices):

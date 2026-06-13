@@ -7,6 +7,7 @@ from .models import PullRequest
 class PullRequestAdmin(admin.ModelAdmin):
     list_display = (
         "__str__",
+        "org",
         "project",
         "status",
         "ci_status",
@@ -16,7 +17,7 @@ class PullRequestAdmin(admin.ModelAdmin):
         "author",
         "created_at",
     )
-    list_filter = ("status", "ci_status", "project")
+    list_filter = ("status", "ci_status", "org", "project")
     search_fields = ("title", "description", "head_branch", "base_branch")
     readonly_fields = ("created_at", "merged_at", "diff")
     raw_id_fields = ("worktree",)

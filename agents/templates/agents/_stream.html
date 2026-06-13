@@ -1,11 +1,29 @@
 {% load helm_extras %}
 {% comment %}
-  Live-tailing log block. Self-polls every 1.5s while running; stops once the
-  run is done/failed by simply not re-issuing the hx-trigger.
+  Live-tailing log block with INCREMENTAL append.
+
+  Layout (important for htmx correctness):
+
+    #stream      — the self-polling STATUS HEADER only. It re-fetches itself
+                   every 1.5s while queued/running and swaps via outerHTML.
+    #agent-logs  — the log BODY, rendered ONCE on the initial (non-oob) render
+                   as a SIBLING of #stream (NOT a child). Because it lives
+                   outside #stream, the outerHTML swap of #stream can never
+                   remove it, so it remains a stable target across every poll.
+
+  On each poll the fragment returns:
+    1. a fresh #stream header (self-replaces the old header via outerHTML), and
+    2. an out-of-band <div id="agent-logs" hx-swap-oob="beforeend"> delta which
+       htmx appends to the surviving #agent-logs FIRST, then swaps the header.
+
+  Polling stops automatically once status is done/failed (the new #stream simply
+  stops emitting hx-get), so no full-block flash and no oobErrorNoTarget.
 {% endcomment %}
+
+{# --- self-polling status header (self-replaces via outerHTML) --- #}
 <div id="stream"
      {% if run.status == 'queued' or run.status == 'running' %}
-     hx-get="{% url 'agents:stream' run.pk %}"
+     hx-get="{% url 'agents:stream' run.pk %}?since={{ since|default:0 }}"
      hx-trigger="every 1.5s"
      hx-swap="outerHTML"
      {% endif %}>
@@ -21,9 +39,23 @@
       <span class="pill pill-live"><span class="dot dot-live"></span> tailing</span>
     {% endif %}
   </div>
-  <div class="logs" id="agent-logs">{{ run.output }}{% if not run.output %}<span class="muted">waiting for output…</span>{% endif %}</div>
   {% if run.error %}<div class="toast toast-error mt-8">{{ run.error }}</div>{% endif %}
-  <script>
-    (function(){ var l=document.getElementById('agent-logs'); if(l){ l.scrollTop=l.scrollHeight; } })();
-  </script>
 </div>
+
+{% if oob %}
+  {# Poll response: append ONLY the new bytes to the stable sibling #agent-logs. #}
+  {% if delta %}<div id="agent-logs" hx-swap-oob="beforeend">{{ delta }}</div>{% endif %}
+{% else %}
+  {# Initial render: emit the full log body ONCE as a sibling of #stream. #}
+  <div class="logs" id="agent-logs">{{ run.output }}{% if not run.output %}<span class="muted" id="agent-logs-empty">waiting for output…</span>{% endif %}</div>
+{% endif %}
+
+<script>
+  (function(){
+    {% if oob and delta %}
+    // Real output arrived — drop the "waiting" placeholder if it's still there.
+    var ph=document.getElementById('agent-logs-empty'); if(ph){ ph.remove(); }
+    {% endif %}
+    var l=document.getElementById('agent-logs'); if(l){ l.scrollTop=l.scrollHeight; }
+  })();
+</script>

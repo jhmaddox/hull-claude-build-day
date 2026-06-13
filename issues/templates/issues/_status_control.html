@@ -1,0 +1,12 @@
+{% load helm_extras %}
+<div id="status-control" class="row gap-8" style="flex-wrap:wrap;">
+  {% for value, label in status_choices %}
+  <form hx-post="{% url 'issues:set_status' ticket.pk %}" hx-target="#status-control" hx-swap="outerHTML" method="post">
+    <input type="hidden" name="status" value="{{ value }}">
+    <button type="submit"
+      class="btn btn-sm {% if ticket.status == value %}btn-primary{% else %}btn-ghost{% endif %}">
+      {{ label }}
+    </button>
+  </form>
+  {% endfor %}
+</div>

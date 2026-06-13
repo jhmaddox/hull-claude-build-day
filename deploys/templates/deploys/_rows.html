@@ -20,6 +20,7 @@
     <form method="post" action="/deploys/{{ d.pk }}/restart/" style="display:inline;">
       {% csrf_token %}<button class="btn btn-sm" type="submit">Restart</button>
     </form>
+    <a class="btn btn-sm" href="{% url 'deploys:history' d.environment.pk %}">History</a>
   </td>
 </tr>
 {% empty %}

@@ -1,0 +1,62 @@
+{% extends "accounts/_account_base.html" %}
+{% block title %}Members{% endblock %}
+{% block crumbs %}<a class="link" href="{% url 'accounts:members' %}">Account</a> <span class="muted">/ Members</span>{% endblock %}
+{% block account_title %}Members of {{ request.org.name }}{% endblock %}
+
+{% block account_body %}
+<div class="card pad-0">
+  <div class="card-head" style="padding:14px 18px 0;">
+    <div>
+      <div style="font-weight:600;">Team members</div>
+      <div class="muted small">{{ memberships|length }} member{{ memberships|length|pluralize }}</div>
+    </div>
+    {% if is_admin %}<a class="btn btn-sm btn-primary" href="{% url 'accounts:invitations' %}">Invite</a>{% endif %}
+  </div>
+  <table>
+    <thead>
+      <tr>
+        <th>User</th>
+        <th>Email</th>
+        <th>Role</th>
+        <th>Joined</th>
+        {% if is_admin %}<th class="right">Actions</th>{% endif %}
+      </tr>
+    </thead>
+    <tbody>
+      {% for m in memberships %}
+      <tr>
+        <td>{{ m.user.username }}{% if m.user_id == request.user.id %} <span class="muted small">(you)</span>{% endif %}</td>
+        <td class="muted">{{ m.user.email|default:"—" }}</td>
+        <td>
+          {% if m.role == 'owner' %}<span class="badge badge-accent">Owner</span>
+          {% elif m.role == 'admin' %}<span class="badge badge-info">Admin</span>
+          {% elif m.role == 'viewer' %}<span class="badge badge-warn">Viewer</span>
+          {% else %}<span class="badge badge-neutral">Member</span>{% endif %}
+        </td>
+        <td class="muted small">{{ m.created_at|date:"M j, Y" }}</td>
+        {% if is_admin %}
+        <td class="right">
+          <form method="post" action="{% url 'accounts:change_role' m.id %}" style="display:inline-flex;gap:6px;align-items:center;">
+            {% csrf_token %}
+            <select name="role" class="btn-sm" style="width:auto;">
+              {% for value, label in roles %}
+                <option value="{{ value }}" {% if value == m.role %}selected{% endif %}>{{ label }}</option>
+              {% endfor %}
+            </select>
+            <button class="btn btn-sm" type="submit">Save</button>
+          </form>
+          <form method="post" action="{% url 'accounts:remove_member' m.id %}" style="display:inline;"
+                onsubmit="return confirm('Remove {{ m.user.username }} from the org?');">
+            {% csrf_token %}
+            <button class="btn btn-sm btn-danger" type="submit">Remove</button>
+          </form>
+        </td>
+        {% endif %}
+      </tr>
+      {% empty %}
+      <tr><td colspan="5"><div class="empty">No members yet.</div></td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

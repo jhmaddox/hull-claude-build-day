@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+{% load helm_extras %}
+{% block title %}Env vars · {{ environment }}{% endblock %}
+{% block crumbs %}
+  <a class="link" href="/deploys/">Deployments</a>
+  <span class="muted">/ {{ environment.project.name }} / {{ environment.name }} / Config</span>
+{% endblock %}
+
+{% block content %}
+<div class="row between mb-16">
+  <div>
+    <div class="title-xl">Environment config</div>
+    <div class="muted">Per-env variables &amp; secrets for {{ environment.project.name }} / {{ environment.name }}. Injected at deploy time.</div>
+  </div>
+  <a class="btn" href="{% url 'deploys:domains' environment.pk %}">Domains →</a>
+</div>
+
+<div class="card mb-16">
+  <div class="card-head"><h2>Add / update variable</h2></div>
+  <form method="post" action="{% url 'deploys:env_vars' environment.pk %}">
+    {% csrf_token %}
+    <div class="grid grid-3">
+      <div class="field"><label>Key</label><input type="text" name="key" placeholder="DATABASE_URL" required></div>
+      <div class="field"><label>Value</label><input type="text" name="value" placeholder="value"></div>
+      <div class="field">
+        <label>&nbsp;</label>
+        <label class="muted"><input type="checkbox" name="is_secret"> Secret (masked)</label>
+      </div>
+    </div>
+    <div class="mt-8"><button class="btn btn-primary" type="submit">Save</button></div>
+  </form>
+</div>
+
+<div class="card pad-0" id="env-vars">
+  {% include "deploys/_env_vars.html" %}
+</div>
+{% endblock %}

@@ -1,0 +1,52 @@
+{% load helm_extras %}
+{% if live_count == 0 %}
+<div class="card">
+  <div class="empty"><div class="big">✓</div>Nothing running right now. The agent org is idle.</div>
+</div>
+{% else %}
+<div class="grid" style="grid-template-columns: 1fr 1fr;">
+  <div class="col">
+    <div class="card pad-0">
+      <div class="card-head" style="padding:16px 18px 0;">
+        <h2>Running workflows</h2>
+        <span class="badge badge-warn">{{ workflows.count }}</span>
+      </div>
+      <div class="list">
+        {% for wf in workflows %}
+        <a class="list-row" href="/orchestration/{{ wf.pk }}/">
+          <span class="badge badge-warn"><span class="spinner" style="width:10px;height:10px;"></span> Running</span>
+          <div class="grow">
+            <strong>{{ wf.name }}</strong>
+            <div class="muted small">{{ wf.project.name|default:"—" }} · {{ wf.backend }} · {{ wf.created_at|timesince }} ago</div>
+          </div>
+        </a>
+        {% empty %}
+        <div class="empty"><div class="big">⟳</div>No workflows running.</div>
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+
+  <div class="col">
+    <div class="card pad-0">
+      <div class="card-head" style="padding:16px 18px 0;">
+        <h2>Running agents</h2>
+        <span class="badge badge-warn">{{ agents|length }}</span>
+      </div>
+      <div class="list">
+        {% for a in agents %}
+        <a class="list-row" href="/agents/{{ a.pk }}/">
+          <span class="badge badge-warn"><span class="spinner" style="width:10px;height:10px;"></span> {{ a.get_kind_display }}</span>
+          <div class="grow">
+            <strong>{{ a.title }}</strong>
+            <div class="muted small">{{ a.project.name }}{% if a.worktree %} · {{ a.worktree.branch }}{% endif %} · {{ a.created_at|timesince }} ago</div>
+          </div>
+        </a>
+        {% empty %}
+        <div class="empty"><div class="big">🤖</div>No agents running.</div>
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+</div>
+{% endif %}

@@ -1,0 +1,54 @@
+{% extends "base.html" %}
+{% load helm_extras %}
+{% block title %}Deploy history · {{ environment }}{% endblock %}
+{% block crumbs %}
+  <a class="link" href="/deploys/">Deployments</a>
+  <span class="muted">/ {{ environment.project.name }} / {{ environment.name }} / History</span>
+{% endblock %}
+
+{% block content %}
+<div class="row between mb-16">
+  <div>
+    <div class="title-xl">Deploy history</div>
+    <div class="muted">{{ environment.project.name }} / {{ environment.name }} · runtime {{ environment.get_runtime_display }}</div>
+  </div>
+  <div class="row">
+    <a class="btn" href="{% url 'deploys:env_vars' environment.pk %}">Config</a>
+    <a class="btn" href="{% url 'deploys:domains' environment.pk %}">Domains</a>
+  </div>
+</div>
+
+<div class="card pad-0">
+  <table>
+    <thead>
+      <tr>
+        <th>#</th><th>Commit</th><th>Status</th><th>Health</th>
+        <th>Port</th><th>Age</th><th class="right">Actions</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for d in deployments %}
+      <tr>
+        <td class="mono"><a class="link" href="{% url 'deploys:detail' d.pk %}">#{{ d.pk }}</a></td>
+        <td class="mono">{{ d.commit_sha|slice:":8"|default:"—" }}{% if d.commit_message %} · {{ d.commit_message|truncatechars:40 }}{% endif %}</td>
+        <td><span class="badge {{ d.status|status_badge }}">{{ d.get_status_display }}</span></td>
+        <td><span class="badge {{ d.health|status_badge }}">{{ d.get_health_display }}</span></td>
+        <td class="mono">{{ d.port|default:"—" }}</td>
+        <td class="muted nowrap">{{ d.created_at|timesince }} ago</td>
+        <td class="right nowrap">
+          {% if d.status == 'live' %}
+          <span class="badge badge-success">current</span>
+          {% else %}
+          <form method="post" action="{% url 'deploys:rollback' environment.pk d.pk %}" style="display:inline;">
+            {% csrf_token %}<button class="btn btn-sm" type="submit">Roll back to this</button>
+          </form>
+          {% endif %}
+        </td>
+      </tr>
+      {% empty %}
+      <tr><td colspan="7" class="empty">No deployments yet.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+{% load helm_extras %}
+{% block title %}Schedules{% endblock %}
+{% block crumbs %}<a class="muted" href="/oncall/">On-call</a> <span class="faint">/</span> Schedules{% endblock %}
+
+{% block content %}
+<div class="row between mb-16">
+  <div class="title-xl">On-call schedules</div>
+</div>
+
+<div class="grid" style="grid-template-columns: 1.5fr 1fr;">
+  <div class="card pad-0">
+    <div class="card-head" style="padding:16px 18px 0;"><h2>Schedules</h2></div>
+    <div style="padding:6px 0 8px;">
+      {% for row in rows %}
+      <a class="list-row" href="/oncall/schedules/{{ row.schedule.pk }}/">
+        <div class="grow"><strong>{{ row.schedule.name }}</strong>
+          <div class="muted small">tz {{ row.schedule.timezone }}</div></div>
+        <div class="muted small">on-call: {% if row.current %}{{ row.current.user }}{% else %}—{% endif %}</div>
+      </a>
+      {% empty %}
+      <div class="empty">No schedules yet.</div>
+      {% endfor %}
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-head"><h2>New schedule</h2></div>
+    <form method="post" class="col gap-8">
+      {% csrf_token %}
+      <input class="field" name="name" placeholder="Schedule name" required>
+      <input class="field" name="timezone" placeholder="UTC" value="UTC">
+      <button class="btn btn-primary" type="submit">Create</button>
+    </form>
+  </div>
+</div>
+{% endblock %}

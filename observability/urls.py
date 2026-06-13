@@ -18,9 +18,29 @@ urlpatterns = [
         views.incident_remediate,
         name="incident_remediate",
     ),
+    # Per-deployment observability.
+    path(
+        "deployment/<int:pk>/",
+        views.deployment_dashboard,
+        name="deployment_dashboard",
+    ),
+    path(
+        "deployment/<int:pk>/metrics/",
+        views.deployment_metrics,
+        name="deployment_metrics",
+    ),
     path(
         "deployment/<int:pk>/logs/",
         views.deployment_logs,
         name="deployment_logs",
+    ),
+    # Monitors CRUD.
+    path("monitors/", views.monitor_list, name="monitor_list"),
+    path("monitors/new/", views.monitor_new, name="monitor_new"),
+    path("monitors/<int:pk>/edit/", views.monitor_edit, name="monitor_edit"),
+    path(
+        "monitors/<int:pk>/delete/",
+        views.monitor_delete,
+        name="monitor_delete",
     ),
 ]

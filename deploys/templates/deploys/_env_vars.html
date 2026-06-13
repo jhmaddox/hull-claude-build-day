@@ -1,0 +1,27 @@
+{% load helm_extras %}
+<table>
+  <thead>
+    <tr><th>Key</th><th>Value</th><th>Type</th><th class="right">Actions</th></tr>
+  </thead>
+  <tbody>
+    {% for v in vars %}
+    <tr>
+      <td class="mono">{{ v.key }}</td>
+      <td class="mono">{{ v.display_value }}</td>
+      <td>
+        {% if v.is_secret %}<span class="badge badge-warn">secret</span>
+        {% else %}<span class="badge badge-neutral">plain</span>{% endif %}
+      </td>
+      <td class="right nowrap">
+        <form method="post" action="{% url 'deploys:env_var_delete' v.environment.pk v.pk %}"
+              hx-post="{% url 'deploys:env_var_delete' v.environment.pk v.pk %}"
+              hx-target="#env-vars" hx-swap="innerHTML" style="display:inline;">
+          {% csrf_token %}<button class="btn btn-sm btn-danger" type="submit">Delete</button>
+        </form>
+      </td>
+    </tr>
+    {% empty %}
+    <tr><td colspan="4" class="empty">No variables yet.</td></tr>
+    {% endfor %}
+  </tbody>
+</table>

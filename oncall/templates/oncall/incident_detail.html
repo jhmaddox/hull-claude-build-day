@@ -1,0 +1,98 @@
+{% extends "base.html" %}
+{% load helm_extras %}
+{% block title %}INC-{{ incident.number }}{% endblock %}
+{% block crumbs %}<a class="muted" href="/oncall/">On-call</a> <span class="faint">/</span> INC-{{ incident.number }}{% endblock %}
+
+{% block content %}
+<div class="row between mb-16">
+  <div>
+    <div class="row gap-8">
+      <span class="title-xl">INC-{{ incident.number }}</span>
+      <span class="badge {{ incident.severity|status_badge }}">{{ incident.get_severity_display }}</span>
+      <span class="badge {{ incident.status|status_badge }}">{{ incident.get_status_display }}</span>
+    </div>
+    <div class="muted">{{ incident.title }}</div>
+  </div>
+  <div class="row gap-8">
+    {% if incident.status != 'acknowledged' and incident.status != 'resolved' %}
+    <form method="post" action="/oncall/incidents/{{ incident.pk }}/ack/">{% csrf_token %}
+      <button class="btn btn-primary" type="submit">Acknowledge</button>
+    </form>
+    {% endif %}
+    {% if incident.status != 'resolved' %}
+    <form method="post" action="/oncall/incidents/{{ incident.pk }}/resolve/">{% csrf_token %}
+      <button class="btn btn-success" type="submit">Resolve</button>
+    </form>
+    {% endif %}
+    {% if incident.status == 'resolved' %}
+    <a class="btn btn-ghost" href="/oncall/incidents/{{ incident.pk }}/postmortem/">Postmortem</a>
+    {% endif %}
+  </div>
+</div>
+
+<div class="grid" style="grid-template-columns: 1.5fr 1fr;">
+  <div class="col">
+    <div class="card">
+      <div class="card-head"><h2>Error</h2>
+        <span class="badge badge-danger">{{ incident.error_type|default:"error" }}</span>
+      </div>
+      <div class="mono" style="color:var(--danger);">{{ incident.error_message|default:"(no message)" }}</div>
+      <div class="divider"></div>
+      <div class="row gap-24 wrap">
+        <div><div class="label muted small">SUSPECT</div><div class="mono">{{ incident.suspect_file|default:"—" }}{% if incident.suspect_line %}:{{ incident.suspect_line }}{% endif %}</div></div>
+        <div><div class="label muted small">OCCURRENCES</div><div class="mono">{{ incident.occurrences }}</div></div>
+        <div><div class="label muted small">PROJECT</div><div class="mono">{{ incident.project.name|default:"—" }}</div></div>
+        {% if routed_rule %}<div><div class="label muted small">ROUTED VIA</div><div class="mono">{{ routed_rule.name|default:routed_rule.pk }}</div></div>{% endif %}
+      </div>
+    </div>
+
+    <div class="card pad-0">
+      <div class="card-head" style="padding:16px 18px 0;"><h2>Timeline</h2>
+        <span class="pill pill-live"><span class="dot dot-live"></span> live</span></div>
+      <div style="padding:6px 18px 14px;">
+        {% include "oncall/_timeline.html" %}
+      </div>
+    </div>
+  </div>
+
+  <div class="col">
+    <div class="card">
+      <div class="card-head"><h2>Actions</h2></div>
+      <form method="post" action="/oncall/incidents/{{ incident.pk }}/note/" class="col gap-8">
+        {% csrf_token %}
+        <textarea name="message" class="field" rows="2" placeholder="Add a note…"></textarea>
+        <button class="btn btn-ghost btn-sm" type="submit">Add note</button>
+      </form>
+      <div class="divider"></div>
+      <form method="post" action="/oncall/incidents/{{ incident.pk }}/assign/" class="row gap-8">
+        {% csrf_token %}
+        <select name="user" class="field grow">
+          <option value="">Assign to…</option>
+          {% for u in members %}<option value="{{ u.pk }}">{{ u }}</option>{% endfor %}
+        </select>
+        <button class="btn btn-ghost btn-sm" type="submit">Assign</button>
+      </form>
+      <div class="divider"></div>
+      <form method="post" action="/oncall/incidents/{{ incident.pk }}/tick/">
+        {% csrf_token %}
+        <button class="btn btn-ghost btn-sm" type="submit">Run escalation tick</button>
+      </form>
+    </div>
+
+    {% if incident.remediation_pr %}
+    <div class="card" style="border-color: rgba(52,211,153,.35);">
+      <div class="card-head"><h2 style="color:var(--success)">Fix shipped</h2></div>
+      <a class="link" href="{{ incident.remediation_pr.get_absolute_url }}">PR #{{ incident.remediation_pr.number }}</a>
+      <div class="muted small">{{ incident.remediation_pr.title }}</div>
+    </div>
+    {% endif %}
+
+    <div class="card pad-0">
+      <div class="card-head" style="padding:16px 18px 0;"><h2>Traceback</h2></div>
+      <div style="padding:0 18px 18px;">
+        <div class="logs">{{ incident.traceback|default:"(no traceback captured)" }}</div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

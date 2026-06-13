@@ -1,0 +1,67 @@
+{% extends "base.html" %}
+{% block title %}{{ page.title }}{% endblock %}
+{% block head %}{% include "wiki/_wiki_styles.html" %}{% endblock %}
+{% block crumbs %}
+  <a class="link" href="{% url 'wiki:index' %}">Docs</a>
+  {% if page.space %}<span class="muted"> / </span><a class="link" href="{{ page.space.get_absolute_url }}">{{ page.space.name }}</a>{% endif %}
+  <span class="muted"> / </span>{{ page.title }}
+{% endblock %}
+{% block actions %}
+  <a class="btn btn-ghost" href="{% url 'wiki:page_history' page.pk %}">History</a>
+  <a class="btn btn-ghost" href="{% url 'wiki:page_new' %}?parent={{ page.pk }}">+ Sub-page</a>
+  <button class="btn btn-primary"
+          hx-get="{% url 'wiki:page_edit_inline' page.pk %}"
+          hx-target="#page-body" hx-swap="innerHTML">Edit</button>
+{% endblock %}
+
+{% block content %}
+{% if page.breadcrumbs|length > 1 %}
+<div class="wiki-crumbs mb-8">
+  {% for crumb in page.breadcrumbs %}
+    {% if not forloop.last %}<a href="{% url 'wiki:page' crumb.pk %}">{{ crumb.title }}</a> ›
+    {% else %}<span>{{ crumb.title }}</span>{% endif %}
+  {% endfor %}
+</div>
+{% endif %}
+
+<div class="wiki-layout">
+  <div class="card wiki-tree">
+    <div class="card-head">{% if page.space %}{{ page.space.name }}{% else %}Pages{% endif %}</div>
+    {% include "wiki/_tree.html" with nodes=tree current_pk=page.pk %}
+  </div>
+
+  <div>
+    <div class="card">
+      <div id="page-body">
+        {% include "wiki/_page_body.html" %}
+      </div>
+    </div>
+
+    {% if children %}
+    <div class="card mt-16">
+      <div class="card-head">Sub-pages</div>
+      <div class="list">
+        {% for child in children %}
+        <a class="list-row" href="{% url 'wiki:page' child.pk %}">
+          <div class="grow"><strong>{{ child.title }}</strong></div>
+        </a>
+        {% endfor %}
+      </div>
+    </div>
+    {% endif %}
+
+    {% if backlinks %}
+    <div class="card mt-16">
+      <div class="card-head">Linked from</div>
+      <div class="list">
+        {% for link in backlinks %}
+        <a class="list-row" href="{% url 'wiki:page' link.source.pk %}">
+          <div class="grow">{{ link.source.title }}</div>
+        </a>
+        {% endfor %}
+      </div>
+    </div>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

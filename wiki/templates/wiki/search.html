@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+{% block title %}Search docs{% endblock %}
+{% block head %}{% include "wiki/_wiki_styles.html" %}{% endblock %}
+{% block crumbs %}<a class="link" href="{% url 'wiki:index' %}">Docs</a><span class="muted"> / </span>Search{% endblock %}
+
+{% block content %}
+<div class="title-xl mb-16">Search docs</div>
+<form class="card mb-16" method="get" action="{% url 'wiki:search' %}"
+      hx-get="{% url 'wiki:search' %}" hx-target="#wiki-search-results" hx-trigger="keyup changed delay:300ms, submit"
+      hx-push-url="false" style="padding:12px 14px;">
+  <input type="search" name="q" value="{{ q }}" placeholder="Search docs…" autofocus autocomplete="off"
+         style="width:100%; background:transparent; border:none; outline:none; font-size:15px; color:inherit;">
+</form>
+<div id="wiki-search-results">
+  {% include "wiki/_search_results.html" %}
+</div>
+{% endblock %}

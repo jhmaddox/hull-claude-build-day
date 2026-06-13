@@ -28,6 +28,7 @@ import os
 import re
 import threading
 
+from django.db import models
 from django.utils import timezone
 
 # --------------------------------------------------------------------------- #
@@ -83,12 +84,42 @@ def ingest_line_lookup(deployment_pk: int, raw: str):
     return ingest_line(dep, raw)
 
 
+def _resolve_org(deployment):
+    """Resolve the owning Org from a deployment, loop-safe.
+
+    Tries ``deployment.environment.project.org`` then ``deployment.project.org``.
+    Returns ``None`` on any failure so the autonomous loop (which runs with no
+    request and possibly org-less projects) never breaks. Org is intentionally
+    nullable everywhere it is written.
+    """
+    if deployment is None:
+        return None
+    try:
+        env = getattr(deployment, "environment", None)
+        if env is not None:
+            project = getattr(env, "project", None)
+            if project is not None:
+                return getattr(project, "org", None)
+    except Exception:
+        pass
+    try:
+        project = getattr(deployment, "project", None)
+        if project is not None:
+            return getattr(project, "org", None)
+    except Exception:
+        pass
+    return None
+
+
 def record_metric(deployment, name: str, value: float):
-    """Append a MetricPoint."""
+    """Append a MetricPoint (org resolved from the deployment, default None)."""
     from .models import MetricPoint
 
     return MetricPoint.objects.create(
-        deployment=deployment, name=name, value=float(value)
+        deployment=deployment,
+        name=name,
+        value=float(value),
+        org=_resolve_org(deployment),
     )
 
 
@@ -257,6 +288,7 @@ def ingest_line(deployment, raw: str):
         path=path,
         status_code=status_code,
         latency_ms=latency_ms,
+        org=_resolve_org(deployment),
     )
 
     # ----- metrics ----------------------------------------------------------
@@ -273,6 +305,13 @@ def ingest_line(deployment, raw: str):
             _finalize_traceback(deployment, finalize_after)
         except Exception as exc:  # never let ingestion crash the stream
             print(f"[helm-obs] failed to finalize traceback: {exc}")
+
+    # ----- threshold monitors (additive; fully fallback-wrapped) ------------
+    # A monitor bug must NEVER break ingestion or change this return value.
+    try:
+        evaluate_monitors(deployment)
+    except Exception as exc:  # pragma: no cover - defensive
+        print(f"[helm-obs] evaluate_monitors failed: {exc}")
 
     return log
 
@@ -329,6 +368,7 @@ def open_or_update_incident(
     number = next_incident_number(project)
     incident = Incident.objects.create(
         project=project,
+        org=_resolve_org(deployment),
         deployment=deployment,
         number=number,
         title=title[:300],
@@ -359,6 +399,17 @@ def open_or_update_incident(
         + "=" * 70
     )
 
+    # ----- oncall (Incidents v2) hook: best-effort, NEVER blocks the loop ----
+    # Seeds the first-class timeline ('opened') and routes/pages on-call.
+    # Lazy import + full try/except so a missing/broken oncall app cannot stop
+    # the incident from being created or remediated.
+    try:
+        from oncall.services import loop as _oncall_loop
+
+        _oncall_loop.on_incident_opened(incident)
+    except Exception as exc:  # noqa: BLE001 - never let oncall break ingestion
+        print(f"[helm-obs] oncall on_incident_opened hook failed: {exc}")
+
     # Auto-remediation (default on). Reads env at call time so it can be
     # toggled for tests / demos.
     if _os.environ.get("HELM_AUTO_REMEDIATE", "1") == "1":
@@ -370,3 +421,171 @@ def open_or_update_incident(
             print(f"[helm-obs] auto-remediate dispatch failed: {exc}")
 
     return incident
+
+
+# --------------------------------------------------------------------------- #
+# Metric rollups (additive) — golden signals + nearest-rank percentiles.
+# --------------------------------------------------------------------------- #
+def _percentile(sorted_vals: list[float], pct: float):
+    """Nearest-rank percentile in pure Python. ``pct`` is 0..100.
+
+    Returns ``None`` for an empty list. Uses the nearest-rank method:
+    rank = ceil(pct/100 * N), clamped to [1, N].
+    """
+    n = len(sorted_vals)
+    if n == 0:
+        return None
+    import math
+
+    rank = max(1, min(n, math.ceil((pct / 100.0) * n)))
+    return sorted_vals[rank - 1]
+
+
+def rollups(deployment, window_minutes: int = 5) -> dict:
+    """Aggregate raw MetricPoints over a recent window into golden signals.
+
+    Returns a dict with keys::
+
+        req_rate     requests per minute over the window (float)
+        error_rate   PERCENT of requests that were 5xx errors (0..100 float)
+        throughput   total request count in the window (int)
+        p50/p95/p99  latency_ms percentiles (nearest-rank) or None if no samples
+
+    ``error_rate`` is expressed as a PERCENT (e.g. 20.0 == 20%), not a fraction.
+    Latency percentiles return ``None`` when there are no latency samples.
+    """
+    from .models import MetricPoint
+
+    window_minutes = max(1, int(window_minutes or 1))
+    since = timezone.now() - timezone.timedelta(minutes=window_minutes)
+
+    base = MetricPoint.objects.filter(deployment=deployment, ts__gte=since)
+
+    # requests / errors are emitted as "1" per event -> sum == count.
+    requests = float(
+        base.filter(name="requests").aggregate(
+            s=models.Sum("value")
+        )["s"]
+        or 0.0
+    )
+    errors = float(
+        base.filter(name="errors").aggregate(
+            s=models.Sum("value")
+        )["s"]
+        or 0.0
+    )
+
+    latencies = sorted(
+        float(v)
+        for v in base.filter(name="latency_ms").values_list("value", flat=True)
+    )
+
+    throughput = int(requests)
+    req_rate = requests / window_minutes if window_minutes else requests
+    error_rate = (errors / requests * 100.0) if requests > 0 else 0.0
+    # Guard against bad data: keep bounded + non-negative.
+    error_rate = max(0.0, min(100.0, error_rate))
+
+    return {
+        "req_rate": round(req_rate, 2),
+        "error_rate": round(error_rate, 2),
+        "throughput": throughput,
+        "p50": _percentile(latencies, 50),
+        "p95": _percentile(latencies, 95),
+        "p99": _percentile(latencies, 99),
+    }
+
+
+# --------------------------------------------------------------------------- #
+# Monitors (additive) — threshold breach -> Incident (feeds the loop).
+# --------------------------------------------------------------------------- #
+def _monitor_metric_value(rolled: dict, metric: str):
+    return rolled.get(metric)
+
+
+def evaluate_monitors(deployment):
+    """Evaluate enabled monitors on ``deployment``; open incidents on breach.
+
+    For each enabled Monitor attached to the deployment, compute its configured
+    metric via ``rollups()`` over the monitor's window, compare against
+    threshold/comparator and, on breach, call ``open_or_update_incident`` (which
+    dedupes by signature and feeds the autonomous remediation loop) and emit a
+    ``core.models.Event`` with icon='alert'. Opens nothing when not breached.
+
+    Returns the list of incidents opened/updated this pass. Designed to be
+    called wrapped in try/except from ``ingest_line`` — but it is also internally
+    defensive so a single bad monitor can't abort the whole pass.
+    """
+    from .models import Monitor
+
+    if deployment is None:
+        return []
+
+    opened = []
+    monitors = list(
+        Monitor.objects.filter(deployment=deployment, enabled=True)
+    )
+    if not monitors:
+        return []
+
+    org = _resolve_org(deployment)
+    # Cache rollups per window so multiple monitors don't recompute needlessly.
+    cache: dict[int, dict] = {}
+
+    for mon in monitors:
+        try:
+            window = max(1, int(mon.window_minutes or 5))
+            rolled = cache.get(window)
+            if rolled is None:
+                rolled = rollups(deployment, window_minutes=window)
+                cache[window] = rolled
+            value = _monitor_metric_value(rolled, mon.metric)
+            if not mon.breaches(value):
+                continue
+
+            label = mon.get_metric_display()
+            title = (
+                f"Monitor breach: {label} {mon.comparator_symbol} {mon.threshold}"
+            )
+            # Stable, monitor-identity error_message so the signature (derived
+            # from error_type:error_message) dedupes repeated breaches into ONE
+            # incident regardless of the fluctuating measured value. The live
+            # value goes in the traceback instead (not part of the signature).
+            error_message = (
+                f"monitor:{mon.pk} {label} {mon.comparator_symbol} "
+                f"{mon.threshold} over {window}m"
+            )
+            traceback = (
+                f"{title}\nmeasured {label} = {value} {mon.comparator_symbol} "
+                f"{mon.threshold} over {window}m"
+            )
+
+            incident = open_or_update_incident(
+                deployment,
+                error_type="MonitorBreach",
+                error_message=error_message,
+                traceback=traceback,
+                severity=mon.severity,
+            )
+            # Override the auto-generated signature-derived title is not needed;
+            # the dedupe key includes monitor identity via error_message basis.
+            opened.append(incident)
+
+            try:
+                from core.models import Event
+
+                Event.log(
+                    f"🚨 Monitor breach — {title}",
+                    project=getattr(deployment, "project", None),
+                    actor="monitor",
+                    level="error",
+                    icon="alert",
+                    url=incident.get_absolute_url() if incident else "",
+                )
+            except Exception as exc:  # pragma: no cover - defensive
+                print(f"[helm-obs] monitor event log failed: {exc}")
+        except Exception as exc:  # pragma: no cover - one bad monitor != fatal
+            print(f"[helm-obs] monitor {getattr(mon, 'pk', '?')} eval failed: {exc}")
+            continue
+
+    return opened

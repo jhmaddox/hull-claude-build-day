@@ -10,7 +10,11 @@
 <div class="row between mb-16">
   <div>
     <div class="title-xl">Projects</div>
-    <div class="muted">Everything Hull operates — version control, deploys, ops.</div>
+    <div class="muted">
+      {% if org %}<span class="badge badge-accent">{{ org.name }}</span> · {% endif %}
+      {{ project_count }} project{{ project_count|pluralize }} —
+      version control, deploys, ops.
+    </div>
   </div>
 </div>
 
@@ -35,7 +39,7 @@
     </div>
   </a>
   {% empty %}
-  <div class="card empty"><div class="big">⎈</div>No projects yet. <a class="link" href="/projects/new/">Import one</a> to begin.</div>
+  <div class="card empty"><div class="big">⎈</div>No projects in {% if org %}{{ org.name }}{% else %}this workspace{% endif %} yet. <a class="link" href="/projects/new/">Import one</a> to begin.</div>
   {% endfor %}
 </div>
 {% endblock %}

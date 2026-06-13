@@ -1,0 +1,15 @@
+{% extends "base.html" %}
+{% block title %}Delete {{ page.title }}{% endblock %}
+{% block crumbs %}<a class="link" href="{% url 'wiki:index' %}">Docs</a><span class="muted"> / </span>Delete{% endblock %}
+
+{% block content %}
+<div class="card col" style="gap:14px; max-width:560px;">
+  <div class="title-xl">Delete “{{ page.title }}”?</div>
+  <div class="muted">This permanently deletes the page{% if page.children.exists %} and all its sub-pages{% endif %} and its revision history.</div>
+  <form method="post" action="{% url 'wiki:page_delete' page.pk %}" class="row gap-8">
+    {% csrf_token %}
+    <button type="submit" class="btn btn-danger">Delete</button>
+    <a class="btn btn-ghost" href="{{ page.get_absolute_url }}">Cancel</a>
+  </form>
+</div>
+{% endblock %}

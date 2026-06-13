@@ -1,0 +1,21 @@
+{% extends "base.html" %}
+{% load helm_extras %}
+{% block title %}Dashboard — {{ deployment }}{% endblock %}
+{% block crumbs %}<a class="link" href="/obs/">Observability</a> <span class="muted">/ Dashboard</span>{% endblock %}
+
+{% block content %}
+<div class="row between mb-16">
+  <div>
+    <div class="title-xl">Golden signals</div>
+    <div class="muted">{{ deployment.environment.project.name }} / {{ deployment.environment.name }}
+      · <span class="mono">{{ deployment.commit_sha|slice:":8" }}</span> · :{{ deployment.port }}</div>
+  </div>
+  <div class="row" style="gap:8px;">
+    <a class="btn btn-ghost" href="/obs/deployment/{{ deployment.pk }}/logs/">📜 Logs</a>
+    <a class="btn btn-ghost" href="/obs/monitors/">🔔 Monitors</a>
+  </div>
+</div>
+
+{# Live metrics fragment — HTMX polled (hx-get / hx-trigger='every Ns'). #}
+{% include "observability/_metrics.html" %}
+{% endblock %}

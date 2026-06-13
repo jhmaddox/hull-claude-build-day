@@ -1,9 +1,17 @@
 from django.db import models
 from django.utils import timezone
 
+from accounts.models import OrgScopedModel
 
-class Project(models.Model):
-    """A software project Hull operates: version control, deploys, agents, ops."""
+
+class Project(OrgScopedModel):
+    """A software project Hull operates: version control, deploys, agents, ops.
+
+    Org-scoped: subclasses ``accounts.models.OrgScopedModel`` which adds a
+    nullable ``org`` FK + the ``OrgManager`` (``objects.for_org(...)``). Org is
+    kept nullable so the autonomous incident->fix loop (which runs without a
+    request) keeps working with ``org=None``.
+    """
 
     class Status(models.TextChoices):
         IMPORTING = "importing", "Importing"
@@ -11,7 +19,9 @@ class Project(models.Model):
         FAILED = "failed", "Failed"
 
     name = models.CharField(max_length=200)
-    slug = models.SlugField(max_length=120, unique=True)
+    # Slug is unique per-org (see Meta.constraints), not globally, so two orgs
+    # can each have e.g. an "api" project.
+    slug = models.SlugField(max_length=120)
     repo_url = models.CharField(max_length=500, blank=True)
     # Absolute path to the canonical clone Hull manages.
     local_path = models.CharField(max_length=1000, blank=True)
@@ -34,6 +44,11 @@ class Project(models.Model):
 
     class Meta:
         ordering = ["-created_at"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["org", "slug"], name="uniq_org_slug"
+            ),
+        ]
 
     def __str__(self):
         return self.name

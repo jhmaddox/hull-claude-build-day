@@ -1,0 +1,26 @@
+{% extends "accounts/_account_base.html" %}
+{% block title %}Org settings{% endblock %}
+{% block crumbs %}<a class="link" href="{% url 'accounts:members' %}">Account</a> <span class="muted">/ Org settings</span>{% endblock %}
+{% block account_title %}Organization settings{% endblock %}
+
+{% block account_body %}
+<div class="card" style="max-width:560px;">
+  <div class="card-head"><div style="font-weight:600;">General</div></div>
+  <form method="post" action="{% url 'accounts:org_settings' %}">
+    {% csrf_token %}
+    <div class="field">
+      <label>Organization name</label>
+      <input type="text" name="name" value="{{ org.name }}" {% if not is_admin %}disabled{% endif %}>
+    </div>
+    <div class="field">
+      <label>Slug <span class="muted small">(read-only)</span></label>
+      <input type="text" value="{{ org.slug }}" disabled>
+    </div>
+    {% if is_admin %}
+      <button class="btn btn-primary" type="submit">Save changes</button>
+    {% else %}
+      <div class="muted small">Only owners and admins can rename the organization.</div>
+    {% endif %}
+  </form>
+</div>
+{% endblock %}

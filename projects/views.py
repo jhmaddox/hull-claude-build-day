@@ -4,14 +4,22 @@ from django.contrib import messages
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 
+from accounts.scoping import org_required
+
 from .models import Project
 
 
+@org_required
 def project_list(request):
-    projects = Project.objects.all().prefetch_related("environments")
-    return render(request, "projects/list.html", {"projects": projects})
+    projects = Project.objects.for_org(request.org).prefetch_related("environments")
+    return render(
+        request,
+        "projects/list.html",
+        {"projects": projects, "org": request.org, "project_count": len(projects)},
+    )
 
 
+@org_required
 def project_new(request):
     if request.method == "POST":
         name = (request.POST.get("name") or "").strip()
@@ -25,25 +33,42 @@ def project_new(request):
                 {"name": name, "repo_url": repo_url, "description": description},
             )
 
+        # Tag the import with the acting user's active org so the created
+        # Project is scoped to their tenant.
+        org = getattr(request, "org", None)
         threading.Thread(
             target=_import_in_background,
             args=(name, repo_url, description),
+            kwargs={"org": org},
             daemon=True,
         ).start()
         messages.success(request, f"Importing {name}… this runs in the background.")
         return redirect(reverse("projects:list"))
 
-    return render(request, "projects/new.html", {})
+    return render(request, "projects/new.html", {"org": request.org})
 
 
-def _import_in_background(name, repo_url, description):
+def _import_in_background(name, repo_url, description, *, org=None):
     """Prefer orchestration.import_project (which also auto-deploys). If that
     raises NotImplementedError, fall back to projects.services.import_project +
-    auto-deploy each environment via deploys.services.deploy."""
+    auto-deploy each environment via deploys.services.deploy.
+
+    ``org`` tags the created Project with the acting tenant. We try to pass it
+    to orchestration if that layer accepts it (additive kwarg); if not, we fall
+    back to the direct service path which always honors ``org`` — this keeps the
+    autonomous loop's existing org-less behavior intact while guaranteeing UI
+    imports are org-tagged."""
     from orchestration import service as orch
 
     try:
-        orch.import_project(name, repo_url, description=description)
+        try:
+            orch.import_project(name, repo_url, description=description, org=org)
+        except TypeError:
+            # Orchestration layer doesn't accept org yet — only use the
+            # orchestration path untagged when there is no org to preserve.
+            if org is not None:
+                raise
+            orch.import_project(name, repo_url, description=description)
         return
     except NotImplementedError:
         pass
@@ -53,7 +78,9 @@ def _import_in_background(name, repo_url, description):
     from deploys import services as deploy_services
     from . import services as project_services
 
-    project = project_services.import_project(name, repo_url, description=description)
+    project = project_services.import_project(
+        name, repo_url, description=description, org=org
+    )
     if project.status != Project.Status.READY:
         return
     for env in project.environments.all():
@@ -63,9 +90,11 @@ def _import_in_background(name, repo_url, description):
             pass
 
 
+@org_required
 def project_detail(request, slug):
     project = get_object_or_404(
-        Project.objects.prefetch_related("environments"), slug=slug
+        Project.objects.for_org(request.org).prefetch_related("environments"),
+        slug=slug,
     )
     environments = list(project.environments.all())
 
@@ -95,9 +124,10 @@ def project_detail(request, slug):
     )
 
 
+@org_required
 def project_deploy(request, slug, env_pk):
     """POST: trigger a deploy of one environment in the background."""
-    project = get_object_or_404(Project, slug=slug)
+    project = get_object_or_404(Project.objects.for_org(request.org), slug=slug)
     env = get_object_or_404(project.environments, pk=env_pk)
 
     from orchestration import service as orch

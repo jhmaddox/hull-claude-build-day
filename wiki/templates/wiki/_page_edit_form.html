@@ -1,0 +1,15 @@
+<form hx-post="{% url 'wiki:page_edit_inline' page.pk %}"
+      hx-target="#page-body" hx-swap="innerHTML">
+  <div class="field mb-8">
+    <input type="text" name="title" value="{{ page.title }}"
+           style="width:100%; font-size:18px; font-weight:600; background:transparent; border:none; border-bottom:1px solid var(--border,#2a2f3a); padding:6px 2px; color:inherit;">
+  </div>
+  <textarea name="body" class="wiki-edit-textarea mono" placeholder="Write markdown… use [[Page Title]] to link.">{{ page.body }}</textarea>
+  <div class="row gap-8 mt-8">
+    <button type="submit" class="btn btn-primary btn-sm">Save</button>
+    <button type="button" class="btn btn-ghost btn-sm"
+            hx-get="{% url 'wiki:page_body' page.pk %}"
+            hx-target="#page-body" hx-swap="innerHTML">Cancel</button>
+    <span class="muted small">Markdown · <code>**bold**</code> <code>[[links]]</code> <code>```code```</code></span>
+  </div>
+</form>

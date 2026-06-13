@@ -1,0 +1,56 @@
+{% extends "base.html" %}
+{% load helm_extras %}
+{% block title %}Logs — {{ deployment }}{% endblock %}
+{% block crumbs %}<a class="link" href="/obs/">Observability</a> <span class="muted">/ Logs</span>{% endblock %}
+
+{% block content %}
+<div class="row between mb-16">
+  <div>
+    <div class="title-xl">Log search</div>
+    <div class="muted">{{ deployment.environment.project.name }} / {{ deployment.environment.name }}
+      · <span class="mono">{{ deployment.commit_sha|slice:":8" }}</span></div>
+  </div>
+  <a class="btn btn-ghost" href="/obs/deployment/{{ deployment.pk }}/">📊 Dashboard</a>
+</div>
+
+<div class="card mb-16">
+  <form method="get" action="/obs/deployment/{{ deployment.pk }}/logs/">
+    <div class="grid grid-4">
+      <div class="field">
+        <div class="label muted small">SEARCH (message / path)</div>
+        <input type="text" name="q" value="{{ filters.q }}" placeholder="e.g. checkout">
+      </div>
+      <div class="field">
+        <div class="label muted small">LEVEL</div>
+        <select name="level">
+          <option value="">any</option>
+          <option value="info" {% if filters.level == 'info' %}selected{% endif %}>info</option>
+          <option value="warning" {% if filters.level == 'warning' %}selected{% endif %}>warning</option>
+          <option value="error" {% if filters.level == 'error' %}selected{% endif %}>error</option>
+          <option value="debug" {% if filters.level == 'debug' %}selected{% endif %}>debug</option>
+        </select>
+      </div>
+      <div class="field">
+        <div class="label muted small">STATUS (e.g. 500 or 5xx)</div>
+        <input type="text" name="status" value="{{ filters.status }}" placeholder="5xx">
+      </div>
+      <div class="field">
+        <div class="label muted small">METHOD</div>
+        <input type="text" name="method" value="{{ filters.method }}" placeholder="GET">
+      </div>
+    </div>
+    <div class="row between">
+      <div class="field grow" style="max-width:320px;">
+        <div class="label muted small">PATH CONTAINS</div>
+        <input type="text" name="path" value="{{ filters.path }}" placeholder="/api/">
+      </div>
+      <div class="row" style="gap:8px;align-self:flex-end;">
+        <button class="btn btn-primary" type="submit">Filter</button>
+        <a class="btn btn-ghost" href="/obs/deployment/{{ deployment.pk }}/logs/">Clear</a>
+      </div>
+    </div>
+  </form>
+</div>
+
+{% include "observability/_logs.html" %}
+{% endblock %}

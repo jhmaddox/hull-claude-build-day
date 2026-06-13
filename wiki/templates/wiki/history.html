@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+{% block title %}History · {{ page.title }}{% endblock %}
+{% block crumbs %}
+  <a class="link" href="{% url 'wiki:index' %}">Docs</a>
+  <span class="muted"> / </span><a class="link" href="{{ page.get_absolute_url }}">{{ page.title }}</a>
+  <span class="muted"> / </span>History
+{% endblock %}
+{% block actions %}<a class="btn btn-ghost" href="{{ page.get_absolute_url }}">Back to page</a>{% endblock %}
+
+{% block content %}
+<div class="title-xl mb-16">History — {{ page.title }}</div>
+<div class="card">
+  <div class="list">
+    {% for rev in revisions %}
+    <div class="list-row">
+      <div class="grow">
+        <strong>v{{ rev.number }}</strong> · {{ rev.title }}
+        <div class="muted small">{{ rev.created_at|timesince }} ago{% if rev.edited_by %} · {{ rev.edited_by }}{% endif %}</div>
+      </div>
+      <div class="row gap-8">
+        <a class="btn btn-ghost btn-sm" href="{% url 'wiki:revision' page.pk rev.number %}">View</a>
+        <form method="post" action="{% url 'wiki:revision_restore' page.pk rev.number %}" style="display:inline;">
+          {% csrf_token %}
+          <button type="submit" class="btn btn-ghost btn-sm">Restore</button>
+        </form>
+      </div>
+    </div>
+    {% empty %}
+    <div class="empty"><div class="big">🕓</div>No revisions recorded yet.</div>
+    {% endfor %}
+  </div>
+</div>
+{% endblock %}

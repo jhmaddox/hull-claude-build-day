@@ -1,6 +1,8 @@
 from django.db import models
 from django.utils import timezone
 
+from accounts.models import OrgManager
+
 
 class WorkflowRun(models.Model):
     """A durable, observable unit of orchestration work.
@@ -19,6 +21,15 @@ class WorkflowRun(models.Model):
     status = models.CharField(
         max_length=20, choices=Status.choices, default=Status.RUNNING
     )
+    # Org tenancy (contract): nullable so the autonomous loop can create runs
+    # request-less (org=None). Request paths scope via objects.for_org(...).
+    org = models.ForeignKey(
+        "accounts.Org",
+        null=True,
+        blank=True,
+        on_delete=models.CASCADE,
+        related_name="+",
+    )
     project = models.ForeignKey(
         "projects.Project",
         null=True,
@@ -35,6 +46,9 @@ class WorkflowRun(models.Model):
 
     created_at = models.DateTimeField(default=timezone.now)
     ended_at = models.DateTimeField(null=True, blank=True)
+
+    # OrgManager gives WorkflowRun.objects.for_org(org) / .for_current_org().
+    objects = OrgManager()
 
     class Meta:
         ordering = ["-created_at"]

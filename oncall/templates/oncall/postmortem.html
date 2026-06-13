@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+{% load helm_extras %}
+{% block title %}Postmortem INC-{{ incident.number }}{% endblock %}
+{% block crumbs %}<a class="muted" href="/oncall/incidents/{{ incident.pk }}/">INC-{{ incident.number }}</a> <span class="faint">/</span> Postmortem{% endblock %}
+
+{% block content %}
+<div class="row between mb-16">
+  <div class="title-xl">Postmortem · INC-{{ incident.number }}</div>
+  <a class="btn btn-ghost" href="/oncall/incidents/{{ incident.pk }}/">Back to incident</a>
+</div>
+
+<div class="card">
+  <form method="post" class="col gap-8">
+    {% csrf_token %}
+    <div class="label muted small">SUMMARY</div>
+    <input class="field" name="summary" value="{{ postmortem.summary|default:'' }}" placeholder="One-line summary">
+    <div class="label muted small">ROOT CAUSE</div>
+    <textarea class="field" name="root_cause" rows="3">{{ postmortem.root_cause|default:'' }}</textarea>
+    <div class="label muted small">IMPACT</div>
+    <textarea class="field" name="impact" rows="2">{{ postmortem.impact|default:'' }}</textarea>
+    <div class="label muted small">RESOLUTION</div>
+    <textarea class="field" name="resolution" rows="2">{{ postmortem.resolution|default:'' }}</textarea>
+    <div class="label muted small">LESSONS LEARNED</div>
+    <textarea class="field" name="lessons" rows="2">{{ postmortem.lessons|default:'' }}</textarea>
+    <div class="label muted small">DETAILS (markdown)</div>
+    <textarea class="field" name="body" rows="5">{{ postmortem.body|default:'' }}</textarea>
+
+    <div class="divider"></div>
+    <div class="label muted small">ACTION ITEMS (one per line)</div>
+    {% for ai in action_items %}
+    <input class="field" name="action_item" value="{{ ai.title }}">
+    {% endfor %}
+    <input class="field" name="action_item" placeholder="New action item…">
+    <input class="field" name="action_item" placeholder="New action item…">
+
+    <button class="btn btn-primary" type="submit">Save postmortem</button>
+  </form>
+</div>
+{% endblock %}

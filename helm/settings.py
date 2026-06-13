@@ -35,6 +35,10 @@ INSTALLED_APPS = [
     "vcs",
     "observability",
     "orchestration",
+    "issues",
+    "wiki",
+    "oncall",
+    "enterprise",
 ]
 
 MIDDLEWARE = [

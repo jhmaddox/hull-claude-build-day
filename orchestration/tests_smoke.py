@@ -1,8 +1,17 @@
-"""Render smoke tests for the observability + orchestration UI pages."""
+"""Render smoke tests for the observability + orchestration UI pages.
 
+These pages are now org-scoped (``@org_required`` redirects an
+unauthenticated/orgless client to onboarding), so the test client logs in a
+user, gives them a Membership in an Org, and sets ``session['org_id']`` — the
+same path the ``CurrentOrgMiddleware`` resolves into ``request.org``. All test
+records are stamped with that org so the org-scoped views return them.
+"""
+
+from django.contrib.auth import get_user_model
 from django.test import TestCase
 from django.urls import reverse
 
+from accounts.models import Membership, Org
 from deploys.models import Deployment, Environment
 from observability import services
 from observability.models import Incident
@@ -12,14 +21,31 @@ from projects.models import Project
 
 class UISmokeTests(TestCase):
     def setUp(self):
-        self.project = Project.objects.create(name="Shop", slug="shop")
-        self.env = Environment.objects.create(project=self.project, name="prod")
+        self.org = Org.objects.create(name="Acme", slug="acme")
+        User = get_user_model()
+        self.user = User.objects.create_user(
+            username="smoke", email="smoke@example.com", password="pw"
+        )
+        Membership.objects.create(
+            org=self.org, user=self.user, role=Membership.Role.OWNER
+        )
+        # Authenticate the client and make the org active (mirrors middleware).
+        self.client.force_login(self.user)
+        session = self.client.session
+        session["org_id"] = self.org.id
+        session.save()
+
+        self.project = Project.objects.create(name="Shop", slug="shop", org=self.org)
+        self.env = Environment.objects.create(
+            project=self.project, name="prod", org=self.org
+        )
         self.dep = Deployment.objects.create(
             environment=self.env,
             source_path="/srv/app",
             status=Deployment.Status.LIVE,
             commit_sha="abc1234567",
             port=9101,
+            org=self.org,
         )
         services.record_metric(self.dep, "requests", 10)
         services.record_metric(self.dep, "errors", 2)
@@ -33,9 +59,10 @@ class UISmokeTests(TestCase):
             traceback="Traceback...\nZeroDivisionError: division by zero",
             suspect_file="shop/cart.py",
             suspect_line=88,
+            org=self.org,
         )
         self.wf = WorkflowRun.objects.create(
-            name="remediate incident #1", project=self.project
+            name="remediate incident #1", project=self.project, org=self.org
         )
 
     def test_pages_render(self):
@@ -48,6 +75,8 @@ class UISmokeTests(TestCase):
             reverse("orchestration:workflow_list"),
             reverse("orchestration:workflow_table"),
             reverse("orchestration:workflow_detail", args=[self.wf.pk]),
+            reverse("orchestration:activity"),
+            reverse("orchestration:activity_panel"),
         ]
         for u in urls:
             resp = self.client.get(u)

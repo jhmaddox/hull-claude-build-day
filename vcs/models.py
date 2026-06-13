@@ -1,12 +1,19 @@
 from django.db import models
 from django.utils import timezone
 
+from accounts.models import OrgScopedModel
 
-class PullRequest(models.Model):
+
+class PullRequest(OrgScopedModel):
     """A proposed change: a branch diffed against a base, reviewable + mergeable.
 
     Backed by real git in the project's repo. The diff is computed on demand
     from git but cached here for fast rendering.
+
+    Org-scoped: subclasses ``accounts.models.OrgScopedModel`` which adds a
+    nullable ``org`` FK + the ``OrgManager`` (``objects.for_org(...)``). Org is
+    kept nullable so the autonomous incident->fix loop (which runs without a
+    request, with ``org=None``) keeps working.
     """
 
     class Status(models.TextChoices):

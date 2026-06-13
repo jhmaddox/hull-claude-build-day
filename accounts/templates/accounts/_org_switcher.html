@@ -1,0 +1,34 @@
+{% comment %}
+Reusable org switcher + account nav. Other sections can {% include %} this
+inside their {% block actions %}. Pure helm.css + a tiny vanilla-JS toggle.
+{% endcomment %}
+{% if request.user.is_authenticated %}
+<div class="org-switcher" style="position:relative;">
+  <button type="button" class="btn btn-sm btn-ghost" onclick="this.nextElementSibling.classList.toggle('open')">
+    <span class="ico">⌂</span>
+    {% if request.org %}{{ request.org.name }}{% else %}No org{% endif %} ▾
+  </button>
+  <div class="org-menu" style="position:absolute;right:0;top:110%;z-index:50;display:none;min-width:220px;background:var(--panel);border:1px solid var(--border);border-radius:var(--radius-sm);box-shadow:0 10px 30px rgba(0,0,0,.4);overflow:hidden;">
+    <style>.org-menu.open{display:block !important;}</style>
+    <div class="small muted" style="padding:8px 12px;border-bottom:1px solid var(--border);">Organizations</div>
+    {% for m in request.user.memberships.all %}
+      <a class="list-row small" style="text-decoration:none;justify-content:space-between;"
+         href="{% url 'accounts:switch_org' m.org_id %}">
+        <span>{{ m.org.name }}</span>
+        {% if request.org and m.org_id == request.org.id %}
+          <span class="badge badge-accent">active</span>
+        {% endif %}
+      </a>
+    {% empty %}
+      <div class="small muted" style="padding:10px 12px;">No memberships.</div>
+    {% endfor %}
+    <div style="border-top:1px solid var(--border);">
+      <a class="list-row small" style="text-decoration:none;" href="{% url 'accounts:members' %}"><span class="ico">◐</span> Members</a>
+      <a class="list-row small" style="text-decoration:none;" href="{% url 'accounts:invitations' %}"><span class="ico">✉</span> Invitations</a>
+      <a class="list-row small" style="text-decoration:none;" href="{% url 'accounts:org_settings' %}"><span class="ico">⚙</span> Org settings</a>
+      <a class="list-row small" style="text-decoration:none;" href="{% url 'accounts:profile' %}"><span class="ico">◔</span> Profile</a>
+      <a class="list-row small" style="text-decoration:none;" href="{% url 'accounts:logout' %}"><span class="ico">⏻</span> Sign out</a>
+    </div>
+  </div>
+</div>
+{% endif %}

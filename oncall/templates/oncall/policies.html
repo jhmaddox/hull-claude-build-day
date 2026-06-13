@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+{% load helm_extras %}
+{% block title %}Escalation policies{% endblock %}
+{% block crumbs %}<a class="muted" href="/oncall/">On-call</a> <span class="faint">/</span> Escalation{% endblock %}
+
+{% block content %}
+<div class="row between mb-16"><div class="title-xl">Escalation policies</div></div>
+
+<div class="grid" style="grid-template-columns: 1.5fr 1fr;">
+  <div class="card pad-0">
+    <div class="card-head" style="padding:16px 18px 0;"><h2>Policies</h2></div>
+    <div style="padding:6px 0 8px;">
+      {% for p in policies %}
+      <a class="list-row" href="/oncall/policies/{{ p.pk }}/">
+        <div class="grow"><strong>{{ p.name }}</strong>
+          <div class="muted small">{{ p.steps.count }} step{{ p.steps.count|pluralize }}</div></div>
+      </a>
+      {% empty %}
+      <div class="empty">No policies yet.</div>
+      {% endfor %}
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-head"><h2>New policy</h2></div>
+    <form method="post" class="col gap-8">
+      {% csrf_token %}
+      <input class="field" name="name" placeholder="Policy name" required>
+      <button class="btn btn-primary" type="submit">Create</button>
+    </form>
+  </div>
+</div>
+{% endblock %}

@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+{% load helm_extras %}
+{% block title %}{{ schedule.name }}{% endblock %}
+{% block crumbs %}<a class="muted" href="/oncall/schedules/">Schedules</a> <span class="faint">/</span> {{ schedule.name }}{% endblock %}
+
+{% block content %}
+<div class="row between mb-16">
+  <div>
+    <div class="title-xl">{{ schedule.name }}</div>
+    <div class="muted">Currently on-call: {% if current %}<strong>{{ current.user }}</strong>{% else %}—{% endif %}</div>
+  </div>
+</div>
+
+<div class="grid" style="grid-template-columns: 1.5fr 1fr;">
+  <div class="card pad-0">
+    <div class="card-head" style="padding:16px 18px 0;"><h2>Rotation</h2></div>
+    <div style="padding:6px 0 8px;">
+      {% for m in members %}
+      <div class="list-row">
+        <div class="grow"><strong>#{{ m.order }}</strong> {{ m.user }}</div>
+        {% if m == current %}<span class="badge badge-success">on-call</span>{% endif %}
+      </div>
+      {% empty %}
+      <div class="empty">No members. Add one to start the rotation.</div>
+      {% endfor %}
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-head"><h2>Add member</h2></div>
+    <form method="post" class="col gap-8">
+      {% csrf_token %}
+      <select class="field" name="user" required>
+        <option value="">Select user…</option>
+        {% for u in org_members %}<option value="{{ u.pk }}">{{ u }}</option>{% endfor %}
+      </select>
+      <input class="field" name="order" type="number" placeholder="order (optional)">
+      <button class="btn btn-primary" type="submit">Add to rotation</button>
+    </form>
+  </div>
+</div>
+{% endblock %}

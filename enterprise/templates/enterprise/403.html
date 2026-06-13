@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+{% block title %}Forbidden{% endblock %}
+{% block crumbs %}<span class="muted">Enterprise</span> / <span>Forbidden</span>{% endblock %}
+{% block content %}
+  <div class="card">
+    <div class="card-head"><h2 class="title-xl">403 — insufficient role</h2></div>
+    <p class="muted">
+      This action requires the
+      <span class="badge badge-warn">{{ required_role }}</span> role (or higher)
+      in this organization. Ask an owner or admin for access.
+    </p>
+    <div class="row gap-8 mt-16">
+      <a class="btn btn-ghost" href="{% url 'enterprise:settings' %}">Back to settings</a>
+      <a class="btn btn-ghost" href="/">Mission Control</a>
+    </div>
+  </div>
+{% endblock %}

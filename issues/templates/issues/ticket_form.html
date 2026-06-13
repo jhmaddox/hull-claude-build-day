@@ -1,0 +1,59 @@
+{% extends "base.html" %}
+{% load helm_extras %}
+{% block title %}{% if ticket %}Edit {{ ticket.key }}{% else %}New Ticket{% endif %}{% endblock %}
+{% block crumbs %}<a class="link" href="{% url 'issues:board' %}">Issues</a> <span class="muted">/ {% if ticket %}{{ ticket.key }}{% else %}New{% endif %}</span>{% endblock %}
+
+{% block content %}
+<div class="title-xl mb-16">{% if ticket %}Edit {{ ticket.key }}{% else %}File a Ticket{% endif %}</div>
+<form method="post" class="card issues-form" style="max-width:720px;">
+  {% csrf_token %}
+  <div class="field">
+    <label class="label">Title</label>
+    <input name="title" value="{{ ticket.title|default:'' }}" required style="width:100%;">
+  </div>
+  <div class="field">
+    <label class="label">Description</label>
+    <textarea name="description" rows="6" style="width:100%;">{{ ticket.description|default:'' }}</textarea>
+  </div>
+  <div class="grid grid-3">
+    <div class="field">
+      <label class="label">Type</label>
+      <select name="type" style="width:100%;">
+        {% for v, l in type_choices %}<option value="{{ v }}" {% if ticket.type == v %}selected{% endif %}>{{ l }}</option>{% endfor %}
+      </select>
+    </div>
+    <div class="field">
+      <label class="label">Priority</label>
+      <select name="priority" style="width:100%;">
+        {% for v, l in priority_choices %}<option value="{{ v }}" {% if ticket.priority == v %}selected{% endif %}>{{ l }}</option>{% endfor %}
+      </select>
+    </div>
+    <div class="field">
+      <label class="label">Status</label>
+      <select name="status" style="width:100%;">
+        {% for v, l in status_choices %}<option value="{{ v }}" {% if ticket.status == v %}selected{% endif %}>{{ l }}</option>{% endfor %}
+      </select>
+    </div>
+  </div>
+  <div class="grid grid-2">
+    <div class="field">
+      <label class="label">Board</label>
+      <select name="board" style="width:100%;">
+        <option value="">—</option>
+        {% for b in boards %}<option value="{{ b.pk }}" {% if ticket.board_id == b.pk %}selected{% endif %}>{{ b.name }}</option>{% endfor %}
+      </select>
+    </div>
+    <div class="field">
+      <label class="label">Sprint</label>
+      <select name="sprint" style="width:100%;">
+        <option value="">—</option>
+        {% for s in sprints %}<option value="{{ s.pk }}" {% if ticket.sprint_id == s.pk %}selected{% endif %}>{{ s.name }}</option>{% endfor %}
+      </select>
+    </div>
+  </div>
+  <div class="row gap-8 mt-16">
+    <button class="btn btn-primary" type="submit">{% if ticket %}Save{% else %}Create{% endif %}</button>
+    <a class="btn btn-ghost" href="{% url 'issues:board' %}">Cancel</a>
+  </div>
+</form>
+{% endblock %}

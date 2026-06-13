@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+{% block title %}v{{ revision.number }} · {{ page.title }}{% endblock %}
+{% block head %}{% include "wiki/_wiki_styles.html" %}{% endblock %}
+{% block crumbs %}
+  <a class="link" href="{% url 'wiki:index' %}">Docs</a>
+  <span class="muted"> / </span><a class="link" href="{{ page.get_absolute_url }}">{{ page.title }}</a>
+  <span class="muted"> / </span><a class="link" href="{% url 'wiki:page_history' page.pk %}">History</a>
+  <span class="muted"> / </span>v{{ revision.number }}
+{% endblock %}
+{% block actions %}
+  <form method="post" action="{% url 'wiki:revision_restore' page.pk revision.number %}">
+    {% csrf_token %}<button type="submit" class="btn btn-primary">Restore this version</button>
+  </form>
+{% endblock %}
+
+{% block content %}
+<div class="row between mb-16">
+  <div class="title-xl">{{ revision.title }}</div>
+  <span class="badge badge-neutral">v{{ revision.number }} · {{ revision.created_at|timesince }} ago</span>
+</div>
+<div class="card">
+  <div class="prose">{{ rendered|safe }}</div>
+</div>
+{% endblock %}

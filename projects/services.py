@@ -105,13 +105,18 @@ def detect_runtime(path: str) -> dict:
     }
 
 
-def _unique_slug(name: str) -> str:
+def _unique_slug(name: str, org=None) -> str:
+    """Return a slug unique within ``org`` (slugs are unique per-org, not global).
+
+    ``org=None`` preserves the original behavior of uniqueness among org-less
+    projects (the autonomous-loop path).
+    """
     from .models import Project
 
     base = slugify(name) or "project"
     slug = base
     n = 1
-    while Project.objects.filter(slug=slug).exists():
+    while Project.objects.filter(org=org, slug=slug).exists():
         n += 1
         slug = f"{base}-{n}"
     return slug
@@ -146,19 +151,23 @@ def _ensure_local_git_repo(repo_url: str) -> None:
                    stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
 
 
-def import_project(name: str, repo_url: str, *, description: str = ""):
+def import_project(name: str, repo_url: str, *, description: str = "", org=None):
     """Clone ``repo_url`` into settings.HELM_REPOS_DIR/<slug>, detect runtime,
     create ``staging`` (branch=default) and ``prod`` (branch=default)
     Environments, mark the Project READY, and log core.Event entries.
 
     May be called for a local path repo_url too (use ``file://`` or a path).
     Returns the Project. Sets Project.status=FAILED + import_log on error.
+
+    ``org`` is keyword-only and defaults to ``None`` so the autonomous loop and
+    any existing callers keep working unchanged; UI imports pass ``request.org``
+    so the created Project is tagged with the acting user's active org.
     """
     from core.models import Event
     from deploys.models import Environment
     from .models import Project
 
-    slug = _unique_slug(name)
+    slug = _unique_slug(name, org=org)
     dest = os.path.join(str(settings.HELM_REPOS_DIR), slug)
 
     project = Project.objects.create(
@@ -168,6 +177,7 @@ def import_project(name: str, repo_url: str, *, description: str = ""):
         description=description,
         status=Project.Status.IMPORTING,
         local_path=dest,
+        org=org,
     )
 
     Event.log(

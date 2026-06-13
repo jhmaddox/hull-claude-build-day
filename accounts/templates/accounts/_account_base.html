@@ -1,0 +1,21 @@
+{% extends "base.html" %}
+{% comment %}
+Shared scaffold for accounts pages: extends base.html, wires the org switcher
+into the topbar actions slot, and renders a section sub-nav. Child pages
+{% extends "accounts/_account_base.html" %} and fill {% block account_body %}.
+{% endcomment %}
+
+{% block actions %}{% include "accounts/_org_switcher.html" %}{% endblock %}
+
+{% block content %}
+<div class="row between wrap mb-16">
+  <div class="title-xl">{% block account_title %}Account{% endblock %}</div>
+</div>
+<div class="row gap-8 wrap mb-16">
+  <a class="btn btn-sm{% if active == 'members' %} btn-primary{% endif %}" href="{% url 'accounts:members' %}">Members</a>
+  <a class="btn btn-sm{% if active == 'invitations' %} btn-primary{% endif %}" href="{% url 'accounts:invitations' %}">Invitations</a>
+  <a class="btn btn-sm{% if active == 'org' %} btn-primary{% endif %}" href="{% url 'accounts:org_settings' %}">Org settings</a>
+  <a class="btn btn-sm{% if active == 'profile' %} btn-primary{% endif %}" href="{% url 'accounts:profile' %}">Profile</a>
+</div>
+{% block account_body %}{% endblock %}
+{% endblock %}

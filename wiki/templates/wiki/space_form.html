@@ -1,0 +1,30 @@
+{% extends "base.html" %}
+{% block title %}New space{% endblock %}
+{% block head %}{% include "wiki/_wiki_styles.html" %}{% endblock %}
+{% block crumbs %}<a class="link" href="{% url 'wiki:index' %}">Docs</a><span class="muted"> / </span>New space{% endblock %}
+
+{% block content %}
+<div class="title-xl mb-16">New space</div>
+<form method="post" action="{% url 'wiki:space_new' %}" class="card col" style="gap:14px; max-width:620px;">
+  {% csrf_token %}
+  <div class="field col" style="gap:6px;">
+    <label class="muted small">Name</label>
+    <input type="text" name="name" required
+           style="width:100%; padding:8px 10px; background:transparent; border:1px solid var(--border,#2a2f3a); border-radius:8px; color:inherit;">
+  </div>
+  <div class="field col" style="gap:6px;">
+    <label class="muted small">Icon (emoji)</label>
+    <input type="text" name="icon" value="📚" maxlength="8"
+           style="width:90px; padding:8px 10px; background:transparent; border:1px solid var(--border,#2a2f3a); border-radius:8px; color:inherit;">
+  </div>
+  <div class="field col" style="gap:6px;">
+    <label class="muted small">Description</label>
+    <textarea name="description" rows="3"
+              style="width:100%; padding:8px 10px; background:transparent; border:1px solid var(--border,#2a2f3a); border-radius:8px; color:inherit;"></textarea>
+  </div>
+  <div class="row gap-8">
+    <button type="submit" class="btn btn-primary">Create space</button>
+    <a class="btn btn-ghost" href="{% url 'wiki:index' %}">Cancel</a>
+  </div>
+</form>
+{% endblock %}

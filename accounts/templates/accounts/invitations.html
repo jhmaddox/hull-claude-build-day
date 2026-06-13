@@ -1,0 +1,71 @@
+{% extends "accounts/_account_base.html" %}
+{% block title %}Invitations{% endblock %}
+{% block crumbs %}<a class="link" href="{% url 'accounts:members' %}">Account</a> <span class="muted">/ Invitations</span>{% endblock %}
+{% block account_title %}Invitations{% endblock %}
+
+{% block account_body %}
+<div class="grid grid-2">
+  <div class="card">
+    <div class="card-head"><div style="font-weight:600;">Invite a teammate</div></div>
+    <form method="post" action="{% url 'accounts:invitations' %}">
+      {% csrf_token %}
+      <div class="field"><label>Email</label><input type="text" name="email" placeholder="teammate@example.com" autofocus></div>
+      <div class="field">
+        <label>Role</label>
+        <select name="role">
+          {% for value, label in roles %}<option value="{{ value }}" {% if value == 'member' %}selected{% endif %}>{{ label }}</option>{% endfor %}
+        </select>
+      </div>
+      <button class="btn btn-primary" type="submit">Send invitation</button>
+    </form>
+  </div>
+
+  <div class="card">
+    <div class="card-head"><div style="font-weight:600;">How it works</div></div>
+    <div class="muted small">Invited users get a link. When they sign in and open it,
+      they join this org with the assigned role. Pending links below are copyable.</div>
+  </div>
+</div>
+
+<div class="card pad-0 mt-16">
+  <div class="card-head" style="padding:14px 18px 0;"><div style="font-weight:600;">Pending invitations</div></div>
+  <table>
+    <thead><tr><th>Email</th><th>Role</th><th>Accept link</th><th class="right">Actions</th></tr></thead>
+    <tbody>
+      {% for row in pending %}
+      <tr>
+        <td>{{ row.invite.email }}</td>
+        <td><span class="badge badge-neutral">{{ row.invite.get_role_display }}</span></td>
+        <td><code class="kbd" style="user-select:all;">{{ row.accept_url }}</code></td>
+        <td class="right">
+          <form method="post" action="{% url 'accounts:revoke_invite' row.invite.id %}" style="display:inline;"
+                onsubmit="return confirm('Revoke this invitation?');">
+            {% csrf_token %}<button class="btn btn-sm btn-danger" type="submit">Revoke</button>
+          </form>
+        </td>
+      </tr>
+      {% empty %}
+      <tr><td colspan="4"><div class="empty">No pending invitations.</div></td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<div class="card pad-0 mt-16">
+  <div class="card-head" style="padding:14px 18px 0;"><div style="font-weight:600;">Accepted</div></div>
+  <table>
+    <thead><tr><th>Email</th><th>Role</th><th>Accepted</th></tr></thead>
+    <tbody>
+      {% for row in accepted %}
+      <tr>
+        <td>{{ row.invite.email }}</td>
+        <td><span class="badge badge-success">{{ row.invite.get_role_display }}</span></td>
+        <td class="muted small">{{ row.invite.accepted_at|date:"M j, Y" }}</td>
+      </tr>
+      {% empty %}
+      <tr><td colspan="3"><div class="empty">No accepted invitations yet.</div></td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

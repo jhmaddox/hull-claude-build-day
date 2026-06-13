@@ -1,0 +1,34 @@
+{% extends "base.html" %}
+{% block title %}{{ space.name }}{% endblock %}
+{% block head %}{% include "wiki/_wiki_styles.html" %}{% endblock %}
+{% block crumbs %}
+  <a class="link" href="{% url 'wiki:index' %}">Docs</a>
+  <span class="muted"> / </span>{{ space.icon }} {{ space.name }}
+{% endblock %}
+{% block actions %}
+  <a class="btn btn-primary" href="{% url 'wiki:page_new' %}?space={{ space.slug }}">+ Page</a>
+{% endblock %}
+
+{% block content %}
+<div class="row between mb-16">
+  <div>
+    <div class="title-xl">{{ space.icon }} {{ space.name }}</div>
+    {% if space.description %}<div class="muted">{{ space.description }}</div>{% endif %}
+  </div>
+</div>
+
+<div class="wiki-layout">
+  <div class="card wiki-tree">
+    <div class="card-head">Pages ({{ page_count }})</div>
+    {% include "wiki/_tree.html" with nodes=tree current_pk=0 %}
+  </div>
+  <div class="card">
+    {% if tree %}
+      <div class="muted">Select a page from the tree, or <a class="link" href="{% url 'wiki:page_new' %}?space={{ space.slug }}">create a new one</a>.</div>
+    {% else %}
+      <div class="empty"><div class="big">📄</div>This space has no pages yet.
+        <a class="link" href="{% url 'wiki:page_new' %}?space={{ space.slug }}">Write the first page</a>.</div>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

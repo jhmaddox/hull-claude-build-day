@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+{% load helm_extras %}
+{% block title %}Agent roster{% endblock %}
+{% block crumbs %}<a class="link" href="{% url 'agents:list' %}">Agents</a> <span class="muted">/ Roster</span>{% endblock %}
+{% block actions %}
+  <a class="btn btn-ghost" href="{% url 'agents:list' %}">≡ Runs</a>
+  <a class="btn btn-primary" href="{% url 'agents:new' %}">+ Launch agent</a>
+{% endblock %}
+
+{% block content %}
+<div class="row between mb-16">
+  <div>
+    <div class="title-xl">Agent roster</div>
+    <div class="muted">The agent crew at work in this org, broken down by role.</div>
+  </div>
+  {% if running %}<span class="pill pill-live"><span class="dot dot-live"></span> {{ running }} working</span>{% endif %}
+</div>
+
+<div class="grid grid-3 mb-16">
+  <div class="card stat"><div class="label">Total runs</div><div class="value">{{ total }}</div></div>
+  <div class="card stat"><div class="label">Active</div><div class="value accent">{{ running }}</div></div>
+  <div class="card stat"><div class="label">Total spend</div><div class="value accent">${{ spend|floatformat:4 }}</div></div>
+</div>
+
+<div class="grid grid-3">
+  {% for row in roster %}
+  <a class="card" href="{% url 'agents:list' %}?kind={{ row.kind }}" style="display:block;">
+    <div class="card-head">
+      <span class="badge badge-accent">{{ row.label }}</span>
+      <span class="value" style="font-size:24px; font-weight:700;">{{ row.total }}</span>
+    </div>
+    <div class="row gap-8" style="flex-wrap:wrap;">
+      {% if row.running %}<span class="badge badge-info"><span class="dot"></span>{{ row.running }} active</span>{% endif %}
+      {% if row.done %}<span class="badge badge-success">{{ row.done }} done</span>{% endif %}
+      {% if row.failed %}<span class="badge badge-danger">{{ row.failed }} failed</span>{% endif %}
+      {% if not row.total %}<span class="muted small">No runs yet</span>{% endif %}
+    </div>
+    <div class="muted small mt-8">spend ${{ row.spend|floatformat:4 }}</div>
+  </a>
+  {% endfor %}
+</div>
+{% endblock %}

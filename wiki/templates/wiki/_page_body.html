@@ -1,0 +1,12 @@
+<div class="row between mb-8">
+  <strong style="font-size:18px;">{{ page.title }}</strong>
+  <span class="muted small">Updated {{ page.updated_at|timesince }} ago{% if page.updated_by %} by {{ page.updated_by }}{% endif %}</span>
+</div>
+{% if rendered %}
+  <div class="prose">{{ rendered|safe }}</div>
+{% else %}
+  <div class="empty"><div class="big">📝</div>This page is empty.
+    <button class="link" style="background:none;border:none;cursor:pointer;"
+            hx-get="{% url 'wiki:page_edit_inline' page.pk %}"
+            hx-target="#page-body" hx-swap="innerHTML">Add content</button>.</div>
+{% endif %}

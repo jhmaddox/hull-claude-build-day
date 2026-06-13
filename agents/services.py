@@ -61,6 +61,7 @@ def create_worktree(project, name: str, *, base_branch: str | None = None):
 
     worktree = Worktree.objects.create(
         project=project,
+        org=getattr(project, "org", None),
         name=name,
         branch=branch,
         base_branch=base,
@@ -413,6 +414,7 @@ def launch_agent(
 
     agent_run = AgentRun.objects.create(
         project=project,
+        org=getattr(project, "org", None),
         worktree=worktree,
         kind=kind,
         title=title,

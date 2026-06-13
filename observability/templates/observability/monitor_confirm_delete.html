@@ -1,0 +1,19 @@
+{% extends "base.html" %}
+{% block title %}Delete monitor{% endblock %}
+{% block crumbs %}<a class="link" href="/obs/">Observability</a> / <a class="link" href="/obs/monitors/">Monitors</a> <span class="muted">/ Delete</span>{% endblock %}
+
+{% block content %}
+<div class="title-xl mb-16">Delete monitor</div>
+<div class="card" style="max-width:560px;">
+  <p>Delete <strong>{{ monitor.name|default:monitor.get_metric_display }}</strong>
+    (<span class="mono">{{ monitor.get_metric_display }} {{ monitor.comparator_symbol }} {{ monitor.threshold }}</span>)?
+    This cannot be undone.</p>
+  <form method="post" action="/obs/monitors/{{ monitor.pk }}/delete/">
+    {% csrf_token %}
+    <div class="row" style="gap:8px;">
+      <button class="btn btn-danger" type="submit">Delete</button>
+      <a class="btn btn-ghost" href="/obs/monitors/">Cancel</a>
+    </div>
+  </form>
+</div>
+{% endblock %}

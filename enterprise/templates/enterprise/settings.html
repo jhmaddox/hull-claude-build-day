@@ -1,0 +1,56 @@
+{% extends "base.html" %}
+{% load enterprise_extras %}
+{% block title %}Org settings{% endblock %}
+{% block crumbs %}<span class="muted">Enterprise</span> / <span>Settings</span>{% endblock %}
+{% block content %}
+  <div class="grid grid-2 gap-16">
+    <div class="card">
+      <div class="card-head"><h2 class="title-xl">Organization</h2></div>
+      {% if can_edit %}
+        <form method="post" class="col gap-8">
+          {% csrf_token %}
+          <label class="label" for="name">Name</label>
+          <input class="field" type="text" id="name" name="name" value="{{ org.name }}">
+          <div class="row gap-8 mt-8">
+            <button class="btn btn-primary" type="submit">Save</button>
+          </div>
+        </form>
+      {% else %}
+        <div class="list-row"><span class="label">Name</span><span class="value">{{ org.name }}</span></div>
+        <p class="muted small">Only owners and admins can edit org settings.</p>
+      {% endif %}
+      <div class="list-row"><span class="label">Slug</span><span class="value mono">{{ org.slug }}</span></div>
+      <div class="list-row"><span class="label">Created</span><span class="value">{{ org.created_at|date:"M j, Y" }}</span></div>
+    </div>
+
+    <div class="card">
+      <div class="card-head"><h2 class="title-xl">Members</h2></div>
+      <div class="row gap-8 mb-8">
+        <span class="stat"><span class="big">{{ member_total }}</span><span class="muted small">members</span></span>
+        <span class="stat"><span class="big">{{ active_keys }}</span><span class="muted small">active keys</span></span>
+        <span class="stat"><span class="big">{{ audit_count }}</span><span class="muted small">audit rows</span></span>
+      </div>
+      {% for label, count in role_counts %}
+        <div class="list-row">
+          <span class="badge badge-neutral">{{ label }}</span>
+          <span class="value">{{ count }}</span>
+        </div>
+      {% endfor %}
+      <div class="row gap-8 mt-16">
+        <a class="btn btn-ghost" href="/accounts/">Manage members</a>
+      </div>
+    </div>
+  </div>
+
+  <div class="card mt-16">
+    <div class="card-head"><h2 class="title-xl">Enterprise controls</h2></div>
+    <div class="row gap-8">
+      {% if request|can:"admin" %}
+        <a class="btn btn-ghost" href="{% url 'enterprise:keys' %}">API keys</a>
+        <a class="btn btn-ghost" href="{% url 'enterprise:audit' %}">Audit log</a>
+      {% else %}
+        <span class="muted small">API keys and audit log require the admin role.</span>
+      {% endif %}
+    </div>
+  </div>
+{% endblock %}

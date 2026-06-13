@@ -140,9 +140,17 @@ class WorkflowRunTests(TransactionTestCase):
     def _wait(self, wf, timeout=20.0):
         import time
 
+        from django.db import OperationalError
+
         deadline = time.time() + timeout
         while time.time() < deadline:
-            wf.refresh_from_db()
+            try:
+                wf.refresh_from_db()
+            except OperationalError:
+                # Transient sqlite write-lock contention from the daemon
+                # thread's commit — retry rather than spuriously fail.
+                time.sleep(0.05)
+                continue
             if wf.status != WorkflowRun.Status.RUNNING:
                 return
             time.sleep(0.05)

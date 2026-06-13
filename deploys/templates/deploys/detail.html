@@ -14,6 +14,9 @@
   <form method="post" action="/deploys/{{ deployment.pk }}/restart/" style="display:inline;">
     {% csrf_token %}<button class="btn" type="submit">Restart</button>
   </form>
+  <a class="btn" href="{% url 'deploys:history' deployment.environment.pk %}">History</a>
+  <a class="btn" href="{% url 'deploys:env_vars' deployment.environment.pk %}">Config</a>
+  <a class="btn" href="{% url 'deploys:domains' deployment.environment.pk %}">Domains</a>
 {% endblock %}
 
 {% block content %}

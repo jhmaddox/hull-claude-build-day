@@ -1,0 +1,34 @@
+{% extends "base.html" %}
+{% load helm_extras %}
+{% block title %}Sprint · {{ sprint.name }}{% endblock %}
+{% block crumbs %}<a class="link" href="{% url 'issues:sprints' %}">Sprints</a> <span class="muted">/ {{ sprint.name }}</span>{% endblock %}
+{% block actions %}<a class="btn btn-ghost btn-sm" href="{% url 'issues:board' %}">Board</a>{% endblock %}
+
+{% block content %}
+<div class="row between mb-16">
+  <div>
+    <div class="row gap-8">
+      <span class="badge {{ sprint.status|status_badge }}">{{ sprint.get_status_display }}</span>
+      <div class="title-xl">{{ sprint.name }}</div>
+    </div>
+    {% if sprint.goal %}<div class="muted mt-8">{{ sprint.goal }}</div>{% endif %}
+  </div>
+  <span class="muted small">{{ done }}/{{ total }} done · {{ done|pct:total }}%</span>
+</div>
+
+<div class="issues-kanban" style="display:grid;grid-template-columns:repeat({{ columns|length }},minmax(220px,1fr));gap:14px;align-items:start;">
+  {% for status, label, tickets in columns %}
+  <div class="card pad-0 issues-col" style="padding:12px;">
+    <div class="card-head" style="padding:0 0 10px;">
+      <h2 style="font-size:13px;text-transform:uppercase;letter-spacing:.06em;">{{ label }}</h2>
+      <span class="badge badge-neutral">{{ tickets|length }}</span>
+    </div>
+    {% for ticket in tickets %}
+      {% include "issues/_ticket_card.html" %}
+    {% empty %}
+      <div class="muted small" style="padding:8px 2px;">—</div>
+    {% endfor %}
+  </div>
+  {% endfor %}
+</div>
+{% endblock %}

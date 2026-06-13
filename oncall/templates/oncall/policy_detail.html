@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+{% load helm_extras %}
+{% block title %}{{ policy.name }}{% endblock %}
+{% block crumbs %}<a class="muted" href="/oncall/policies/">Escalation</a> <span class="faint">/</span> {{ policy.name }}{% endblock %}
+
+{% block content %}
+<div class="row between mb-16"><div class="title-xl">{{ policy.name }}</div></div>
+
+<div class="grid" style="grid-template-columns: 1.5fr 1fr;">
+  <div class="card pad-0">
+    <div class="card-head" style="padding:16px 18px 0;"><h2>Steps</h2></div>
+    <div style="padding:6px 0 8px;">
+      {% for s in steps %}
+      <div class="list-row">
+        <div class="grow"><strong>Step #{{ s.order }}</strong>
+          <span class="badge badge-neutral">after {{ s.after_minutes }}m</span>
+          <div class="muted small">→ {{ s.target_schedule.name|default:"(no schedule)" }}</div></div>
+      </div>
+      {% empty %}
+      <div class="empty">No steps. Add the first rung.</div>
+      {% endfor %}
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-head"><h2>Add step</h2></div>
+    <form method="post" class="col gap-8">
+      {% csrf_token %}
+      <select class="field" name="target_schedule">
+        <option value="">Target schedule…</option>
+        {% for s in schedules %}<option value="{{ s.pk }}">{{ s.name }}</option>{% endfor %}
+      </select>
+      <input class="field" name="after_minutes" type="number" value="0" placeholder="after minutes">
+      <input class="field" name="order" type="number" placeholder="order (optional)">
+      <button class="btn btn-primary" type="submit">Add step</button>
+    </form>
+  </div>
+</div>
+{% endblock %}

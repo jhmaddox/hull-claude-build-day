@@ -1,0 +1,52 @@
+{% extends "base.html" %}
+{% load helm_extras %}
+{% block title %}Routing rules{% endblock %}
+{% block crumbs %}<a class="muted" href="/oncall/">On-call</a> <span class="faint">/</span> Routing{% endblock %}
+
+{% block content %}
+<div class="row between mb-16"><div class="title-xl">Alert routing rules</div></div>
+
+<div class="grid" style="grid-template-columns: 1.5fr 1fr;">
+  <div class="card pad-0">
+    <div class="card-head" style="padding:16px 18px 0;"><h2>Rules</h2><span class="muted small">by priority</span></div>
+    <div style="padding:6px 0 8px;">
+      {% for r in rules %}
+      <div class="list-row">
+        <div class="grow">
+          <div class="row gap-8"><strong>{{ r.name|default:r.pk }}</strong>
+            <span class="badge badge-neutral">P{{ r.priority }}</span>
+            <span class="badge {{ r.min_severity|status_badge }}">≥ {{ r.min_severity }}</span></div>
+          <div class="muted small">
+            project: {{ r.project.name|default:"any" }} · policy: {{ r.policy.name|default:"—" }}</div>
+        </div>
+      </div>
+      {% empty %}
+      <div class="empty">No routing rules yet.</div>
+      {% endfor %}
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-head"><h2>New rule</h2></div>
+    <form method="post" class="col gap-8">
+      {% csrf_token %}
+      <input class="field" name="name" placeholder="Rule name">
+      <select class="field" name="min_severity">
+        <option value="sev3">≥ sev3 (all)</option>
+        <option value="sev2">≥ sev2</option>
+        <option value="sev1">sev1 only</option>
+      </select>
+      <select class="field" name="project">
+        <option value="">Any project</option>
+        {% for p in projects %}<option value="{{ p.pk }}">{{ p.name }}</option>{% endfor %}
+      </select>
+      <select class="field" name="policy">
+        <option value="">Target policy…</option>
+        {% for p in policies %}<option value="{{ p.pk }}">{{ p.name }}</option>{% endfor %}
+      </select>
+      <input class="field" name="priority" type="number" value="0" placeholder="priority">
+      <button class="btn btn-primary" type="submit">Create rule</button>
+    </form>
+  </div>
+</div>
+{% endblock %}

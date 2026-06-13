@@ -3,6 +3,7 @@
 {% block title %}Agents{% endblock %}
 {% block crumbs %}<span class="muted">Agents</span>{% endblock %}
 {% block actions %}
+  <a class="btn btn-ghost" href="{% url 'agents:roster' %}">▦ Roster</a>
   <a class="btn btn-primary" href="{% url 'agents:new' %}">+ Launch agent</a>
 {% endblock %}
 
@@ -13,6 +14,43 @@
     <div class="muted">Headless Claude sessions working in isolated git worktrees.</div>
   </div>
   {% if running %}<span class="pill pill-live"><span class="dot dot-live"></span> {{ running }} working</span>{% endif %}
+</div>
+
+{# Org-scoped filters: status / kind / project. Each chip links back to the
+   list view preserving the other active filters. #}
+<div class="card mb-16">
+  <div class="row gap-8" style="flex-wrap:wrap; align-items:baseline;">
+    <span class="muted small">Kind</span>
+    <a class="badge {% if not f_kind %}badge-accent{% else %}badge-neutral{% endif %}"
+       href="?{% if f_status %}status={{ f_status }}&{% endif %}{% if f_project %}project={{ f_project }}{% endif %}">All</a>
+    {% for value, label in kind_choices %}
+      <a class="badge {% if f_kind == value %}badge-accent{% else %}badge-neutral{% endif %}"
+         href="?kind={{ value }}{% if f_status %}&status={{ f_status }}{% endif %}{% if f_project %}&project={{ f_project }}{% endif %}">{{ label }}</a>
+    {% endfor %}
+  </div>
+  <div class="row gap-8 mt-8" style="flex-wrap:wrap; align-items:baseline;">
+    <span class="muted small">Status</span>
+    <a class="badge {% if not f_status %}badge-accent{% else %}badge-neutral{% endif %}"
+       href="?{% if f_kind %}kind={{ f_kind }}&{% endif %}{% if f_project %}project={{ f_project }}{% endif %}">All</a>
+    {% for value, label in status_choices %}
+      <a class="badge {% if f_status == value %}badge-accent{% else %}badge-neutral{% endif %}"
+         href="?status={{ value }}{% if f_kind %}&kind={{ f_kind }}{% endif %}{% if f_project %}&project={{ f_project }}{% endif %}">{{ label }}</a>
+    {% endfor %}
+  </div>
+  {% if projects %}
+  <div class="row gap-8 mt-8" style="flex-wrap:wrap; align-items:baseline;">
+    <span class="muted small">Project</span>
+    <a class="badge {% if not f_project %}badge-accent{% else %}badge-neutral{% endif %}"
+       href="?{% if f_kind %}kind={{ f_kind }}&{% endif %}{% if f_status %}status={{ f_status }}{% endif %}">All</a>
+    {% for p in projects %}
+      <a class="badge {% if f_project == p.pk|stringformat:'s' %}badge-accent{% else %}badge-neutral{% endif %}"
+         href="?project={{ p.pk }}{% if f_kind %}&kind={{ f_kind }}{% endif %}{% if f_status %}&status={{ f_status }}{% endif %}">{{ p.name }}</a>
+    {% endfor %}
+  </div>
+  {% endif %}
+  {% if has_filters %}
+  <div class="mt-8"><a class="link small" href="{% url 'agents:list' %}">✕ Clear filters</a></div>
+  {% endif %}
 </div>
 
 <div class="card pad-0">

@@ -1,0 +1,53 @@
+{% extends "base.html" %}
+{% load helm_extras %}
+{% block title %}Domains · {{ environment }}{% endblock %}
+{% block crumbs %}
+  <a class="link" href="/deploys/">Deployments</a>
+  <span class="muted">/ {{ environment.project.name }} / {{ environment.name }} / Domains</span>
+{% endblock %}
+
+{% block content %}
+<div class="row between mb-16">
+  <div>
+    <div class="title-xl">Custom domains</div>
+    <div class="muted">Real hostnames for {{ environment.project.name }} / {{ environment.name }}. Caddy issues TLS on demand for active domains.</div>
+  </div>
+  <a class="btn" href="{% url 'deploys:env_vars' environment.pk %}">Config →</a>
+</div>
+
+<div class="card mb-16">
+  <div class="muted small mb-16">Default URL: <span class="mono">{{ environment.public_url }}</span></div>
+  <div class="card-head"><h2>Add domain</h2></div>
+  <form method="post" action="{% url 'deploys:domains' environment.pk %}">
+    {% csrf_token %}
+    <div class="row">
+      <input type="text" name="hostname" placeholder="myapp.apps.dev-reservclaims.com" required style="flex:1;">
+      <button class="btn btn-primary" type="submit">Add</button>
+    </div>
+  </form>
+</div>
+
+<div class="card pad-0">
+  <table>
+    <thead>
+      <tr><th>Hostname</th><th>Status</th><th>Verified</th><th class="right">Actions</th></tr>
+    </thead>
+    <tbody>
+      {% for d in domains %}
+      <tr>
+        <td class="mono">{{ d.hostname }}</td>
+        <td><span class="badge {{ d.status|status_badge }}">{{ d.get_status_display }}</span></td>
+        <td class="muted">{% if d.verified_at %}{{ d.verified_at|timesince }} ago{% else %}—{% endif %}</td>
+        <td class="right nowrap">
+          <form method="post" action="{% url 'deploys:domain_delete' environment.pk d.pk %}" style="display:inline;">
+            {% csrf_token %}<button class="btn btn-sm btn-danger" type="submit">Remove</button>
+          </form>
+        </td>
+      </tr>
+      {% empty %}
+      <tr><td colspan="4" class="empty">No custom domains yet.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

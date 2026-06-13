@@ -7,9 +7,19 @@
 <div class="row between mb-16">
   <div>
     <div class="title-xl">Orchestration</div>
-    <div class="muted">Durable workflows — imports, deploys, CI, and autonomous remediations. {{ running_count }} running.</div>
+    <div class="muted">The agent org — durable workflows for imports, deploys, CI, and autonomous remediations. {{ running_count }} running.</div>
   </div>
-  <span class="pill pill-live"><span class="dot dot-live"></span> live</span>
+  <div class="row" style="gap:10px;">
+    <a class="btn btn-sm btn-ghost" href="/orchestration/activity/">Live activity →</a>
+    <span class="pill pill-live"><span class="dot dot-live"></span> live</span>
+  </div>
+</div>
+
+<div class="grid grid-4 mb-16">
+  <div class="card stat"><div class="label">Total runs</div><div class="value">{{ stats.total }}</div></div>
+  <div class="card stat"><div class="label">Running</div><div class="value warn">{{ stats.running }}</div></div>
+  <div class="card stat"><div class="label">Succeeded</div><div class="value success">{{ stats.succeeded }}</div></div>
+  <div class="card stat"><div class="label">Failed</div><div class="value {% if stats.failed %}danger{% endif %}">{{ stats.failed }}</div></div>
 </div>
 
 <div class="card pad-0"

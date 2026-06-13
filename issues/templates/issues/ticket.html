@@ -1,0 +1,135 @@
+{% extends "base.html" %}
+{% load helm_extras %}
+{% block title %}{{ ticket.key }} · {{ ticket.title }}{% endblock %}
+{% block crumbs %}<a class="link" href="{% url 'issues:board' %}">Issues</a> <span class="muted">/ {{ ticket.key }}</span>{% endblock %}
+{% block actions %}
+  <a class="btn btn-ghost btn-sm" href="{% url 'issues:ticket_edit' ticket.pk %}">Edit</a>
+{% endblock %}
+
+{% block content %}
+<div class="row between mb-16">
+  <div>
+    <div class="row gap-8">
+      <span class="badge {{ ticket.status|status_badge }}">{{ ticket.get_status_display }}</span>
+      <span class="mono muted">{{ ticket.key }}</span>
+      <div class="title-xl">{{ ticket.title }}</div>
+    </div>
+    <div class="muted mt-8">
+      <span class="badge badge-neutral">{{ ticket.get_type_display }}</span>
+      <span class="badge {{ ticket.priority|status_badge }}">{{ ticket.get_priority_display }}</span>
+      {% for l in ticket.labels.all %}<span class="badge {{ l.color }}">{{ l.name }}</span>{% endfor %}
+    </div>
+  </div>
+</div>
+
+<div class="grid" style="grid-template-columns: 1.7fr 1fr;">
+  <div class="col">
+    <div class="card mb-16">
+      <div class="card-head"><h2>Status</h2></div>
+      {% include "issues/_status_control.html" %}
+    </div>
+
+    {% if ticket.description %}
+    <div class="card mb-16">
+      <div class="card-head"><h2>Description</h2></div>
+      <pre class="code" style="white-space:pre-wrap;">{{ ticket.description }}</pre>
+    </div>
+    {% endif %}
+
+    <div class="card mb-16 issues-comments">
+      <div class="card-head"><h2>Comments</h2><span class="badge badge-neutral">{{ comments|length }}</span></div>
+      <div class="list pad-0">
+        {% for c in comments %}
+        <div class="list-row" style="align-items:flex-start;">
+          <span class="feed-ico">●</span>
+          <div class="grow">
+            <div class="row between">
+              <strong>{{ c.display_author }}</strong>
+              <span class="small muted">{{ c.created_at|timesince }} ago</span>
+            </div>
+            <div class="mt-8" style="white-space:pre-wrap;">{{ c.body }}</div>
+          </div>
+        </div>
+        {% empty %}
+        <div class="muted small" style="padding:10px 14px;">No comments yet.</div>
+        {% endfor %}
+      </div>
+      <form method="post" action="{% url 'issues:add_comment' ticket.pk %}" class="mt-16">
+        {% csrf_token %}
+        <div class="field">
+          <textarea name="body" rows="3" placeholder="Add a comment…" style="width:100%;"></textarea>
+        </div>
+        <button class="btn btn-primary btn-sm" type="submit">Comment</button>
+      </form>
+    </div>
+  </div>
+
+  <div class="col">
+    <div class="card mb-16">
+      <div class="card-head"><h2>Details</h2></div>
+      <div class="list pad-0">
+        <div class="list-row"><span class="muted grow">Assignee</span>
+          <span>{% if ticket.assignee %}{{ ticket.assignee.get_username }}{% elif ticket.assignee_name %}{{ ticket.assignee_name }}{% else %}—{% endif %}</span></div>
+        <div class="list-row"><span class="muted grow">Reporter</span>
+          <span>{% if ticket.reporter %}{{ ticket.reporter.get_username }}{% elif ticket.reporter_name %}{{ ticket.reporter_name }}{% else %}—{% endif %}</span></div>
+        <div class="list-row"><span class="muted grow">Board</span>
+          <span>{% if ticket.board %}{{ ticket.board.name }}{% else %}—{% endif %}</span></div>
+        <div class="list-row"><span class="muted grow">Sprint</span>
+          <span>{% if ticket.sprint %}<a class="link" href="{% url 'issues:sprint' ticket.sprint.pk %}">{{ ticket.sprint.name }}</a>{% else %}—{% endif %}</span></div>
+      </div>
+      <form method="post" action="{% url 'issues:assign' ticket.pk %}" class="row gap-8 mt-16">
+        {% csrf_token %}
+        <input type="hidden" name="assignee" value="me">
+        <button class="btn btn-ghost btn-sm" type="submit">Assign to me</button>
+      </form>
+    </div>
+
+    <div class="card mb-16 issues-links">
+      <div class="card-head"><h2>Links</h2></div>
+      <div class="list pad-0">
+        {% if ticket.pull_request %}
+        <a class="list-row" href="{{ ticket.pull_request.get_absolute_url }}">
+          <span class="feed-ico">⑂</span>
+          <span class="grow">PR #{{ ticket.pull_request.number }} · {{ ticket.pull_request.title }}</span>
+          <span class="badge {{ ticket.pull_request.status|status_badge }}">{{ ticket.pull_request.get_status_display }}</span>
+        </a>
+        {% endif %}
+        {% if ticket.incident %}
+        <a class="list-row" href="{{ ticket.incident.get_absolute_url }}">
+          <span class="feed-ico">⚠</span>
+          <span class="grow">Incident #{{ ticket.incident.number }} · {{ ticket.incident.title }}</span>
+          <span class="badge {{ ticket.incident.status|status_badge }}">{{ ticket.incident.get_status_display }}</span>
+        </a>
+        {% endif %}
+        {% if ticket.agent_run %}
+        <div class="list-row">
+          <span class="feed-ico">✦</span>
+          <span class="grow">Agent run #{{ ticket.agent_run.pk }}</span>
+          <span class="badge {{ ticket.agent_run.status|status_badge }}">{{ ticket.agent_run.status }}</span>
+        </div>
+        {% endif %}
+        {% if not ticket.pull_request and not ticket.incident and not ticket.agent_run %}
+        <div class="muted small" style="padding:10px 14px;">No linked artifacts.</div>
+        {% endif %}
+      </div>
+    </div>
+
+    <div class="card issues-activity">
+      <div class="card-head"><h2>Activity</h2></div>
+      <div class="feed">
+        {% for a in activities %}
+        <div class="feed-item">
+          <div class="feed-ico">•</div>
+          <div class="feed-body">
+            <div><strong>{{ a.actor }}</strong> {{ a.verb }}</div>
+            <div class="feed-time">{{ a.created_at|timesince }} ago</div>
+          </div>
+        </div>
+        {% empty %}
+        <div class="muted small" style="padding:10px 0;">No activity yet.</div>
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

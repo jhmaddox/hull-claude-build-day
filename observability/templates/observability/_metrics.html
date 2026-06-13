@@ -1,0 +1,37 @@
+{% load helm_extras %}
+<div id="metrics-{{ deployment.pk }}"
+     hx-get="/obs/deployment/{{ deployment.pk }}/metrics/"
+     hx-trigger="every 5s"
+     hx-swap="outerHTML">
+  <div class="grid grid-4 mb-16">
+    <div class="card stat">
+      <div class="label muted small">REQ RATE</div>
+      <div class="value" style="font-size:24px;font-weight:700;">{{ rollups.req_rate }}<span class="muted small"> /min</span></div>
+      <div style="color:var(--accent);">{{ req_spark|safe }}</div>
+    </div>
+    <div class="card stat">
+      <div class="label muted small">ERROR RATE</div>
+      <div class="value {% if rollups.error_rate %}danger{% endif %}" style="font-size:24px;font-weight:700;">{{ rollups.error_rate }}<span class="muted small"> %</span></div>
+      <div style="color:var(--danger);">{{ err_spark|safe }}</div>
+    </div>
+    <div class="card stat">
+      <div class="label muted small">THROUGHPUT</div>
+      <div class="value" style="font-size:24px;font-weight:700;">{{ rollups.throughput }}<span class="muted small"> req</span></div>
+      <div class="muted small">last {{ window_minutes }}m</div>
+    </div>
+    <div class="card stat">
+      <div class="label muted small">LATENCY (ms)</div>
+      <div class="value" style="font-size:24px;font-weight:700;">{{ rollups.p95|default:"—" }}<span class="muted small"> p95</span></div>
+      <div style="color:var(--accent);">{{ lat_spark|safe }}</div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="label muted small mb-8">LATENCY PERCENTILES</div>
+    <div class="grid grid-3">
+      <div><div class="label muted small">p50</div><div class="value" style="font-size:20px;font-weight:700;">{{ rollups.p50|default:"—" }} ms</div></div>
+      <div><div class="label muted small">p95</div><div class="value" style="font-size:20px;font-weight:700;">{{ rollups.p95|default:"—" }} ms</div></div>
+      <div><div class="label muted small">p99</div><div class="value" style="font-size:20px;font-weight:700;">{{ rollups.p99|default:"—" }} ms</div></div>
+    </div>
+  </div>
+</div>

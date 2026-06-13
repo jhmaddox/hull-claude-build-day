@@ -1,0 +1,34 @@
+{% extends "base.html" %}
+{% load helm_extras %}
+{% block title %}Monitors{% endblock %}
+{% block crumbs %}<a class="link" href="/obs/">Observability</a> <span class="muted">/ Monitors</span>{% endblock %}
+
+{% block content %}
+<div class="row between mb-16">
+  <div>
+    <div class="title-xl">Monitors</div>
+    <div class="muted">Threshold alerts on golden-signal metrics. A breach opens an incident and feeds the autonomous loop.</div>
+  </div>
+  <a class="btn btn-primary" href="/obs/monitors/new/">+ New monitor</a>
+</div>
+
+<div class="card pad-0">
+  <div class="list">
+    {% for m in monitors %}
+    <div class="list-row">
+      <span class="badge {{ m.severity|status_badge }}">{{ m.get_severity_display }}</span>
+      <div class="grow">
+        <strong>{{ m.name|default:m.get_metric_display }}</strong>
+        <div class="muted small mono">{{ m.get_metric_display }} {{ m.comparator_symbol }} {{ m.threshold }} over {{ m.window_minutes }}m
+          {% if m.deployment %}· {{ m.deployment.environment.project.name }}/{{ m.deployment.environment.name }}{% else %}· (all deployments){% endif %}</div>
+      </div>
+      <span class="badge {% if m.enabled %}badge-success{% else %}badge-neutral{% endif %}">{% if m.enabled %}enabled{% else %}disabled{% endif %}</span>
+      <a class="btn btn-sm btn-ghost" href="/obs/monitors/{{ m.pk }}/edit/">Edit</a>
+      <a class="btn btn-sm btn-ghost" href="/obs/monitors/{{ m.pk }}/delete/">Delete</a>
+    </div>
+    {% empty %}
+    <div class="empty"><div class="big">🔔</div>No monitors yet. Create one to start alerting.</div>
+    {% endfor %}
+  </div>
+</div>
+{% endblock %}

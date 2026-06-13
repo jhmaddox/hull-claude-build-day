@@ -1,0 +1,15 @@
+<ul>
+  {% for node in nodes %}
+    <li>
+      <a href="{% url 'wiki:page' node.page.pk %}"
+         class="{% if current_pk == node.page.pk %}current{% endif %}">
+        {{ node.page.title }}
+      </a>
+      {% if node.children %}
+        {% include "wiki/_tree.html" with nodes=node.children current_pk=current_pk %}
+      {% endif %}
+    </li>
+  {% empty %}
+    <li class="muted small" style="padding:4px 8px;">No pages yet.</li>
+  {% endfor %}
+</ul>
