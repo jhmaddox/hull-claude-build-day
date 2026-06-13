@@ -32,6 +32,10 @@ class Command(BaseCommand):
         parser.add_argument(
             "--reset", action="store_true", help="Delete existing demo project first."
         )
+        parser.add_argument(
+            "--bug-item", dest="bug_item", default="drift-cold-brew-maker",
+            help="Slug of a non-qualifying product to put in the cart before BOGO.",
+        )
 
     def log(self, msg, ok=True):
         prefix = self.style.SUCCESS("✓") if ok else self.style.WARNING("…")
@@ -70,6 +74,18 @@ class Command(BaseCommand):
         prod = project.environments.filter(kind="prod").first()
         prod_url = f"{settings.HELM_BASE_URL.rstrip('/')}/d/{prod.pk}/"
 
+        # Force the long-lived control-plane server to adopt the new
+        # deployments' log tailers (so it ingests the error we're about to
+        # trigger). The dashboard/feed call ensure_tailers() on load.
+        import requests
+
+        for _ in range(3):
+            try:
+                requests.get(f"{settings.HELM_BASE_URL.rstrip('/')}/feed/", timeout=5)
+            except Exception:  # noqa: BLE001
+                pass
+            time.sleep(1)
+
         if not opts["do_break"]:
             self.stdout.write(
                 self.style.SUCCESS(f"\n✓ Demo ready. Prod: {prod_url}\n")
@@ -80,15 +96,21 @@ class Command(BaseCommand):
             )
             return
 
-        # 3. Trigger the production bug.
+        # 3. Trigger the production bug as a real shopper would: add a
+        #    non-qualifying item to the cart, then apply the BOGO promo at
+        #    checkout (the planted bug crashes on an all-non-qualifying cart).
         self.stdout.write(self.style.MIGRATE_HEADING("\n▸ Triggering production incident"))
-        import requests
 
         before = Incident.objects.count()
-        trigger = f"{prod_url}checkout/?promo=BOGO"
+        bug_item = opts.get("bug_item") or "drift-cold-brew-maker"
+        s = requests.Session()
         try:
-            r = requests.get(trigger, timeout=15)
-            self.log(f"GET {trigger} → {r.status_code}", ok=(r.status_code >= 500))
+            s.get(prod_url, timeout=10)
+            s.get(f"{prod_url}product/{bug_item}/add/", timeout=10)  # non-qualifying item
+            trigger = f"{prod_url}checkout/?promo=BOGO"
+            r = s.get(trigger, timeout=15)
+            self.log(f"shopper applied promo BOGO → {trigger} → {r.status_code}",
+                     ok=(r.status_code >= 500))
         except Exception as exc:  # noqa: BLE001
             self.log(f"trigger error (expected on crash): {exc}")
 
