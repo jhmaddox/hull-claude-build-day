@@ -239,7 +239,14 @@ def import_project(name: str, repo_url: str, *, description: str = ""):
         deployed = []
         for env in project.environments.all():
             try:
-                deploy_svc.deploy(env)
+                # Deploy via the projects wrapper so the import progress stepper's
+                # deploy_staging/deploy_prod steps advance (it calls
+                # deploys.services.deploy under the hood). Fall back to a direct
+                # deploy if the wrapper is unavailable.
+                try:
+                    proj_svc.deploy_environment(env)
+                except AttributeError:
+                    deploy_svc.deploy(env)
                 deployed.append(env.name)
             except Exception as exc:  # noqa: BLE001
                 deployed.append(f"{env.name}=ERR({exc})")
