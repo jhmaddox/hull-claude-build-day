@@ -4,7 +4,7 @@ from django.utils import timezone
 
 class Event(models.Model):
     """A platform-wide activity feed entry — the global timeline of everything
-    Helm and its agents do. Powers the dashboard live feed."""
+    Hull and its agents do. Powers the dashboard live feed."""
 
     class Level(models.TextChoices):
         INFO = "info", "Info"

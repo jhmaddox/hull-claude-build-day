@@ -3,7 +3,7 @@ from django.utils import timezone
 
 
 class Project(models.Model):
-    """A software project Helm operates: version control, deploys, agents, ops."""
+    """A software project Hull operates: version control, deploys, agents, ops."""
 
     class Status(models.TextChoices):
         IMPORTING = "importing", "Importing"
@@ -13,7 +13,7 @@ class Project(models.Model):
     name = models.CharField(max_length=200)
     slug = models.SlugField(max_length=120, unique=True)
     repo_url = models.CharField(max_length=500, blank=True)
-    # Absolute path to the canonical clone Helm manages.
+    # Absolute path to the canonical clone Hull manages.
     local_path = models.CharField(max_length=1000, blank=True)
     default_branch = models.CharField(max_length=200, default="main")
 

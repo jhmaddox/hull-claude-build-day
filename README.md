@@ -1,4 +1,4 @@
-# ⎈ Helm — the autonomous software operating system
+# ⎈ Hull — the autonomous software operating system
 
 > One control plane for your entire stack — version control, CI/CD, deployments,
 > observability, and incident response — **operated by a crew of Claude Opus 4.8
@@ -8,16 +8,16 @@
 Built at **Claude Build Day**, San Francisco — June 13, 2026.
 
 Small, elite engineering teams shouldn't need a platform org to run a
-production-grade stack. Helm lets one engineer **import a legacy repo, stand up
+production-grade stack. Hull lets one engineer **import a legacy repo, stand up
 staging + prod, ship features through agents, and have production incidents
 fixed autonomously** — all from a single pane of glass.
 
 ## The money shot 🎯
 
-A production app throws an error → Helm detects it from the live logs → opens a
+A production app throws an error → Hull detects it from the live logs → opens a
 PagerDuty-style **incident** → spawns a **Claude agent in an isolated git
 worktree** → the agent reproduces it, fixes the root cause, **adds a regression
-test** → opens a **pull request** in Helm's own PR/diff UI → **CI runs** → green
+test** → opens a **pull request** in Hull's own PR/diff UI → **CI runs** → green
 → **merges and redeploys** → incident **resolved**. No human in the loop.
 
 ## What it does
@@ -39,6 +39,9 @@ A single **Django 5 + HTMX** control plane (minimal JS), **Temporal** for durabl
 orchestration, **SQLite** for state, and **Claude Opus 4.8** as the headless
 agent that does the engineering work.
 
+> The Django project package and `HELM_*` settings keep the original build
+> codename `helm`; the product is **Hull**.
+
 ```
 helm/                control plane (Django project)
 ├── core/            dashboard, activity feed, design system, demo command
@@ -49,7 +52,7 @@ helm/                control plane (Django project)
 ├── observability/   log/metric ingestion, error detection, incidents
 ├── orchestration/   Temporal workflows + dispatcher (threaded fallback)
 sample_apps/pocketshop/   the "legacy" storefront we import & operate (has a planted bug)
-workflows/          dynamic-workflow scripts used to build & operate Helm
+workflows/          dynamic-workflow scripts used to build & operate Hull
 brief.md  rubric.md  CONTRACTS.md
 ```
 
@@ -71,12 +74,12 @@ python manage.py helm_demo
 ```
 
 `helm_demo` imports PocketShop, deploys staging + prod, then (with `--break`)
-triggers the production bug so you can watch Helm detect, diagnose, and fix it
+triggers the production bug so you can watch Hull detect, diagnose, and fix it
 live on the dashboard.
 
 ## How "done" is verified by the model
 
-Helm's orchestration is designed so the model can check its own work without a
+Hull's orchestration is designed so the model can check its own work without a
 human — see [`rubric.md`](rubric.md). Concretely: deployment health is an HTTP
 200 from a responding URL; a feature/fix is "done" only when its **CI suite is
 green**; an incident is "resolved" only when a **merged remediation PR** ships

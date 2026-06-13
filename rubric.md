@@ -1,4 +1,4 @@
-# Helm — model-gradeable rubric
+# Hull — model-gradeable rubric
 
 A checklist a model can grade against the **running system** with no human in the
 loop. Every item is a pass/fail assertion plus how to check it. Let
@@ -13,7 +13,7 @@ Total: **100 points** — Impact 35 / Demo 35 / Opus 4.8 Use 15 / Orchestration 
 ## Impact (35) — does it unify the ops stack and remove human toil?
 
 - [ ] **(5) Single control plane is up.** `GET {base}/` returns **200** and
-  renders the Helm dashboard (not an error page).
+  renders the Hull dashboard (not an error page).
 - [ ] **(5) Projects are real.** `GET {base}/projects/` returns 200 and lists
   **≥ 1** project whose `status = ready` (the imported PocketShop app).
 - [ ] **(5) Deployments exist for two environment kinds.** The project has both a

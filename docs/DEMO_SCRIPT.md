@@ -1,4 +1,4 @@
-# Helm — demo script
+# Hull — demo script
 
 Two cuts: a **60-second** version for the submission video, and a **3-minute**
 version for the live stage round. Both show the same money shot: a production
@@ -17,13 +17,13 @@ URL. Keep a terminal visible.
 
 ## 60-second cut (submission video)
 
-> "This is Helm — one control plane that runs your whole stack with a crew of
+> "This is Hull — one control plane that runs your whole stack with a crew of
 > Claude agents. GitHub, Vercel, PagerDuty and Datadog, mashed together and run
 > autonomously."
 
 1. **(0:00–0:10) Import + deploy.** On Mission Control, click **Import project**
    → PocketShop. Watch the activity feed: *imported → deployed staging → deployed
-   prod*. Click the **prod** URL — a real storefront loads. *"I pointed Helm at a
+   prod*. Click the **prod** URL — a real storefront loads. *"I pointed Hull at a
    legacy Django app; it imported it and stood up staging and prod with live
    URLs."*
 2. **(0:10–0:20) Break prod.** In the storefront, add an item, apply promo
@@ -43,7 +43,7 @@ URL. Keep a terminal visible.
 Everything above, plus:
 
 - **Contracts + parallel build (orchestration).** Show `CONTRACTS.md` and
-  `workflows/build_helm.workflow.js`: *"Helm itself was built by four Claude
+  `workflows/build_helm.workflow.js`: *"Hull itself was built by four Claude
   agents in parallel against a frozen set of service contracts, then graded
   against `rubric.md`."*
 - **Feature flow.** `/agents/new/` → "Add a free-shipping banner" → watch the
@@ -62,7 +62,7 @@ Everything above, plus:
 ## The "it caught its own failure" beat (judges love this)
 
 During the build, an agent's first deploys failed because the managed app
-inherited Helm's own `DJANGO_SETTINGS_MODULE`; the agent diagnosed it from the
+inherited Hull's own `DJANGO_SETTINGS_MODULE`; the agent diagnosed it from the
 child process error and added `_clean_env()` to strip it. The integrator caught
 the same class of bug in CI and in the proxy's `Set-Cookie` handling. Show the
 commit messages — the system found and fixed its own failures.

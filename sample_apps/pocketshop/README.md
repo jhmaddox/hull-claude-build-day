@@ -1,10 +1,10 @@
 # PocketShop
 
-A small, polished Django storefront — the "established legacy app" that **Helm**
+A small, polished Django storefront — the "established legacy app" that **Hull**
 imports, deploys to staging + prod, monitors, and auto-fixes during the demo.
 
 It is a fully standalone Django project (its own `manage.py`, settings, SQLite,
-seed data, tests). It has no dependency on Helm and runs on its own.
+seed data, tests). It has no dependency on Hull and runs on its own.
 
 ## What it is
 
@@ -39,9 +39,9 @@ Then open `http://localhost:$PORT/`. The home page returns **200** and lists the
 8 seeded products. Add an item, go to checkout, place the order — you get an
 order-confirmation page. (`migrate` is idempotent and seeds products.)
 
-## Running behind Helm's reverse proxy (subpath)
+## Running behind Hull's reverse proxy (subpath)
 
-Helm serves each environment under `/d/<env_pk>/`. PocketShop honors that:
+Hull serves each environment under `/d/<env_pk>/`. PocketShop honors that:
 
 - If `HELM_SCRIPT_NAME` is set (e.g. `/d/7`), settings apply
   `FORCE_SCRIPT_NAME`, and `STATIC_URL` is prefixed with it so `{% static %}`
@@ -50,7 +50,7 @@ Helm serves each environment under `/d/<env_pk>/`. PocketShop honors that:
 - `CSRF_TRUSTED_ORIGINS` is derived from `HELM_BASE_URL` if present.
 - All links/forms use `{% url %}` — nothing is hardcoded to `/`.
 
-Env vars Helm may set: `HELM_SCRIPT_NAME`, `HELM_BASE_URL`,
+Env vars Hull may set: `HELM_SCRIPT_NAME`, `HELM_BASE_URL`,
 `POCKETSHOP_SECRET_KEY`, `POCKETSHOP_DEBUG`.
 
 ## The planted bug (demo-controlled)

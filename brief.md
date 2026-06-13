@@ -1,4 +1,4 @@
-# Helm — the autonomous software operating system
+# Hull — the autonomous software operating system
 
 ## The problem
 
@@ -13,10 +13,10 @@ merge, and redeploy. Every one of those steps is a place to lose hours.
 
 ## The vision
 
-**Helm is one control plane that unifies version control, CI/CD, deployments,
+**Hull is one control plane that unifies version control, CI/CD, deployments,
 observability, and incident response — and runs it autonomously with a crew of
-Claude Opus 4.8 agents.** You import a repo once. Helm deploys it to staging and
-prod, watches it, and when production throws an error, Helm doesn't page a
+Claude Opus 4.8 agents.** You import a repo once. Hull deploys it to staging and
+prod, watches it, and when production throws an error, Hull doesn't page a
 human — it opens an incident, spawns a Claude agent in an isolated git worktree,
 fixes the root cause, adds a regression test, opens a PR in its own diff UI, runs
 CI, merges on green, and redeploys. The human reads the incident timeline after
@@ -48,27 +48,27 @@ dashboards.
 
 A scripted, repeatable run that the audience watches happen live:
 
-1. **Import a legacy app.** Point Helm at `sample_apps/pocketshop` (a real,
-   polished Django storefront). Helm detects the runtime, clones it, and marks
+1. **Import a legacy app.** Point Hull at `sample_apps/pocketshop` (a real,
+   polished Django storefront). Hull detects the runtime, clones it, and marks
    the project *ready*.
-2. **Deploy to staging + prod.** Helm builds and boots both environments; their
+2. **Deploy to staging + prod.** Hull builds and boots both environments; their
    public URLs (`/d/<env_pk>/`) return 200 and show the live storefront.
-3. **Spin up a feature agent.** Helm creates an isolated worktree and launches a
+3. **Spin up a feature agent.** Hull creates an isolated worktree and launches a
    Claude Opus 4.8 agent with a feature task. Its reasoning streams into the UI.
-4. **PR → CI → deploy.** The agent opens a PR in Helm's diff UI; CI runs green;
+4. **PR → CI → deploy.** The agent opens a PR in Hull's diff UI; CI runs green;
    the change deploys.
 5. **Trigger a production error.** We hit the storefront's checkout with the
    promo code `BOGO` (`/checkout/?promo=BOGO`) — a latent bug throws an uncaught
    500 in `store/promos.py`.
-6. **Incident + autonomous fix.** Helm ingests the error, opens an **Incident**
+6. **Incident + autonomous fix.** Hull ingests the error, opens an **Incident**
    (PagerDuty-style), and spawns a **remediation** Claude agent in a fresh
    worktree. The agent reads the traceback, fixes the root cause in the buggy
    function, and **adds a regression test**.
 7. **PR → CI → redeploy → resolved.** The agent opens a remediation PR; CI runs
-   green; Helm merges and redeploys prod; the incident transitions to
+   green; Hull merges and redeploys prod; the incident transitions to
    **resolved** — all without a human touching code.
 
-The whole loop is narrated by Helm's own activity feed, so the system explains
+The whole loop is narrated by Hull's own activity feed, so the system explains
 itself as it runs.
 
 ## What DONE looks like (model-verifiable)

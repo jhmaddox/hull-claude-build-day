@@ -29,7 +29,7 @@ _HOP_BY_HOP = {
 def _error_page(env_pk, title, detail, status=502):
     html = f"""<!DOCTYPE html>
 <html lang="en"><head><meta charset="utf-8">
-<title>{title} · Helm</title>
+<title>{title} · Hull</title>
 <style>
   html,body{{margin:0;height:100%;background:#0a0c11;color:#e7eaf1;
     font-family:Inter,system-ui,sans-serif;display:grid;place-items:center}}
@@ -45,7 +45,7 @@ def _error_page(env_pk, title, detail, status=502):
   <div class="code">{status}</div>
   <h1>{title}</h1>
   <p>{detail}</p>
-  <p><a href="/deploys/">← Back to Helm deployments</a></p>
+  <p><a href="/deploys/">← Back to Hull deployments</a></p>
 </div></body></html>"""
     return HttpResponse(html, content_type="text/html", status=status)
 
@@ -57,7 +57,7 @@ def proxy(request, env_pk, path=""):
     environment = Environment.objects.filter(pk=env_pk).first()
     if environment is None:
         return _error_page(env_pk, "Environment not found",
-                           "No such environment in Helm.", status=404)
+                           "No such environment in Hull.", status=404)
 
     deployment = environment.current_deployment
     if deployment is None or deployment.status != Deployment.Status.LIVE or not deployment.port:

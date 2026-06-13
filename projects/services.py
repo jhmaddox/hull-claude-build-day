@@ -125,10 +125,10 @@ def _clone_args(repo_url: str, dest: str):
 
 def _ensure_local_git_repo(repo_url: str) -> None:
     """If ``repo_url`` is a local directory that isn't yet a git repo,
-    initialize one and commit its contents so Helm can clone it.
+    initialize one and commit its contents so Hull can clone it.
 
     This lets a plain source tree (e.g. the bundled sample app, tracked as
-    normal files in Helm's own repo) be imported without shipping a nested
+    normal files in Hull's own repo) be imported without shipping a nested
     .git. Idempotent and a no-op for URLs / existing repos.
     """
     if "://" in repo_url and not repo_url.startswith("file://"):
@@ -136,8 +136,8 @@ def _ensure_local_git_repo(repo_url: str) -> None:
     path = repo_url[len("file://"):] if repo_url.startswith("file://") else repo_url
     if not os.path.isdir(path) or os.path.isdir(os.path.join(path, ".git")):
         return
-    env = {**os.environ, "GIT_AUTHOR_NAME": "Helm", "GIT_AUTHOR_EMAIL": "helm@helm.dev",
-           "GIT_COMMITTER_NAME": "Helm", "GIT_COMMITTER_EMAIL": "helm@helm.dev"}
+    env = {**os.environ, "GIT_AUTHOR_NAME": "Hull", "GIT_AUTHOR_EMAIL": "helm@helm.dev",
+           "GIT_COMMITTER_NAME": "Hull", "GIT_COMMITTER_EMAIL": "helm@helm.dev"}
     subprocess.run(["git", "init", "-b", "main"], cwd=path, env=env,
                    stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
     subprocess.run(["git", "add", "-A"], cwd=path, env=env,

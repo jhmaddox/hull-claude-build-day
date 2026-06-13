@@ -1,4 +1,4 @@
-"""Render a unified git diff into safe HTML using the Helm `.diff` component."""
+"""Render a unified git diff into safe HTML using the Hull `.diff` component."""
 
 from __future__ import annotations
 

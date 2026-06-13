@@ -156,7 +156,7 @@ def merge_pull_request(pr) -> bool:
     merge = _git(
         repo,
         "-c",
-        "user.name=Helm",
+        "user.name=Hull",
         "-c",
         "user.email=helm@helm.dev",
         "merge",

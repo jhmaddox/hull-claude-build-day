@@ -1,5 +1,5 @@
 /**
- * build_helm.workflow.js — the dynamic Claude Code workflow that builds Helm.
+ * build_helm.workflow.js — the dynamic Claude Code workflow that builds Hull.
  *
  * This is the orchestration that produced this repo, captured so another team
  * can rerun it tomorrow on a new problem. The shape is:
@@ -18,7 +18,7 @@
 
 export const meta = {
   name: 'build-helm',
-  description: 'Build the Helm control plane via contract-first parallel slices, then grade against the rubric',
+  description: 'Build the Hull control plane via contract-first parallel slices, then grade against the rubric',
   phases: [
     { title: 'Foundation', detail: 'schema, service contracts, UI shell' },
     { title: 'Slices', detail: '4 disjoint vertical slices in parallel' },
@@ -50,7 +50,7 @@ const CONTRACT_SCHEMA = {
 // 1. Foundation — must finish before any slice; it freezes the contracts.
 phase('Foundation')
 await agent(
-  `Create the Helm Django skeleton: 7 apps, the full data model (Project, Environment, ` +
+  `Create the Hull Django skeleton: 7 apps, the full data model (Project, Environment, ` +
   `Deployment, Worktree, AgentRun, PullRequest, LogLine, MetricPoint, Incident), a ` +
   `service-contract stub per app (*/services.py with exact signatures + docstrings), ` +
   `the design-system CSS + base.html, the dashboard, and CONTRACTS.md documenting all ` +

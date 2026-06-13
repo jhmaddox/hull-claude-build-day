@@ -34,7 +34,7 @@ Avoid cute or childish. One short, ownable word is ideal.
 `
 
 const STRATEGIES = [
-  { key: 'command-control', brief: 'metaphors of command, steering, and mission control (a bridge/helm/cockpit/flight-deck feel) — the place you run everything from. Avoid the literal word "Helm".' },
+  { key: 'command-control', brief: 'metaphors of command, steering, and mission control (a bridge/helm/cockpit/flight-deck feel) — the place you run everything from. Avoid the literal word "Hull".' },
   { key: 'crew-orchestration', brief: 'metaphors of a crew, conductor, or foreman directing many autonomous workers/agents in concert.' },
   { key: 'forge-shipyard', brief: 'metaphors of building, shipping, and maintaining vessels/structures — foundry, shipyard, drydock, atelier — evoking software being built and shipped.' },
   { key: 'coined-latin-greek', brief: 'invented/coined words and Latin/Greek roots that sound modern, short, and brandable (2-3 syllables), suggesting autonomy, order, or sentience.' },
@@ -92,7 +92,7 @@ const generated = await parallel(
       `Use ONLY this strategy: ${s.brief}\n\n` +
       `Propose 8 distinct candidate names in this strategy. Prefer single words. ` +
       `For each, give a one-sentence rationale and an optional tagline. Avoid names ` +
-      `you know are taken by major developer tools/companies (e.g. Helm, Vercel, ` +
+      `you know are taken by major developer tools/companies (e.g. Hull, Vercel, ` +
       `Railway, Render, Fly, Pulumi, Terraform, Temporal, Argo, Flux, Harness, ` +
       `Backstage, Spinnaker, Nomad, Dagger, Earthly, Sentry, Datadog, PagerDuty).`,
       { label: `gen:${s.key}`, phase: 'Generate', schema: GEN_SCHEMA },

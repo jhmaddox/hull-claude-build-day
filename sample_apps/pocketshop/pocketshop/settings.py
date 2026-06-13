@@ -1,8 +1,8 @@
 """
 Django settings for PocketShop.
 
-A small standalone storefront used as the "legacy app" that Helm imports,
-deploys, monitors, and auto-fixes. It is designed to run behind Helm's
+A small standalone storefront used as the "legacy app" that Hull imports,
+deploys, monitors, and auto-fixes. It is designed to run behind Hull's
 reverse proxy at a subpath (e.g. /d/<env_pk>/), so it honors HELM_SCRIPT_NAME.
 """
 import os
@@ -17,16 +17,16 @@ SECRET_KEY = os.environ.get(
 )
 DEBUG = os.environ.get("POCKETSHOP_DEBUG", "1") == "1"
 
-# Helm serves this app behind a reverse proxy with arbitrary host headers.
+# Hull serves this app behind a reverse proxy with arbitrary host headers.
 ALLOWED_HOSTS = ["*"]
 
-# --- Reverse-proxy subpath support (Helm) -----------------------------------
-# When Helm serves us behind /d/<env_pk>/ it sets HELM_SCRIPT_NAME.
+# --- Reverse-proxy subpath support (Hull) -----------------------------------
+# When Hull serves us behind /d/<env_pk>/ it sets HELM_SCRIPT_NAME.
 HELM_SCRIPT_NAME = os.environ.get("HELM_SCRIPT_NAME", "")
 if HELM_SCRIPT_NAME:
     FORCE_SCRIPT_NAME = HELM_SCRIPT_NAME
 
-# CSRF: trust the public base URL Helm exposes us at, if provided.
+# CSRF: trust the public base URL Hull exposes us at, if provided.
 HELM_BASE_URL = os.environ.get("HELM_BASE_URL", "")
 CSRF_TRUSTED_ORIGINS = []
 if HELM_BASE_URL:
@@ -84,7 +84,7 @@ DATABASES = {
 
 # --- Static files (whitenoise) ----------------------------------------------
 # STATIC_URL must include the reverse-proxy script prefix so {% static %}
-# resolves correctly when Helm serves us under /d/<env_pk>/. Django does NOT
+# resolves correctly when Hull serves us under /d/<env_pk>/. Django does NOT
 # apply FORCE_SCRIPT_NAME to STATIC_URL, so we prepend it ourselves.
 STATIC_URL = (HELM_SCRIPT_NAME.rstrip("/") if HELM_SCRIPT_NAME else "") + "/static/"
 STATIC_ROOT = BASE_DIR / "staticfiles"

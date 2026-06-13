@@ -1,6 +1,6 @@
-"""Root URL configuration for Helm.
+"""Root URL configuration for Hull.
 
-Each Helm app owns its own ``urls.py`` with an ``app_name`` namespace and is
+Each Hull app owns its own ``urls.py`` with an ``app_name`` namespace and is
 included below. Parallel build agents should ONLY edit their own app's
 ``urls.py`` — never this file.
 """

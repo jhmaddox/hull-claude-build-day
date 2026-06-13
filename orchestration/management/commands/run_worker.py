@@ -1,4 +1,4 @@
-"""Run a Temporal worker for Helm's orchestration task queue.
+"""Run a Temporal worker for Hull's orchestration task queue.
 
     python manage.py run_worker
 
@@ -17,7 +17,7 @@ from django.core.management.base import BaseCommand
 
 
 class Command(BaseCommand):
-    help = "Run the Temporal worker for Helm orchestration workflows."
+    help = "Run the Temporal worker for Hull orchestration workflows."
 
     def handle(self, *args, **options):
         try:
@@ -45,7 +45,7 @@ class Command(BaseCommand):
             )
             self.stdout.write(
                 self.style.SUCCESS(
-                    f"Helm worker connected to {host} (ns={namespace}) "
+                    f"Hull worker connected to {host} (ns={namespace}) "
                     f"on task queue '{task_queue}' — waiting for work…"
                 )
             )

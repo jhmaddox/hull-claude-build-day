@@ -1,4 +1,4 @@
-"""Temporal scaffold for Helm orchestration.
+"""Temporal scaffold for Hull orchestration.
 
 Default OFF (HELM_USE_TEMPORAL=0): the threaded fallback in ``service.py`` runs
 instead, so the product works with no Temporal server. When enabled and a

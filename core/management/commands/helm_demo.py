@@ -1,4 +1,4 @@
-"""End-to-end demo driver for Helm.
+"""End-to-end demo driver for Hull.
 
     python manage.py helm_demo               # import PocketShop + deploy staging & prod
     python manage.py helm_demo --break        # also trigger the prod bug -> autonomous fix
@@ -16,7 +16,7 @@ from django.utils import timezone
 
 
 class Command(BaseCommand):
-    help = "Run the Helm end-to-end demo."
+    help = "Run the Hull end-to-end demo."
 
     def add_arguments(self, parser):
         parser.add_argument(

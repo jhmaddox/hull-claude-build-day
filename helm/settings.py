@@ -1,5 +1,5 @@
 """
-Django settings for Helm — the autonomous software operating system.
+Django settings for Hull — the autonomous software operating system.
 """
 
 import os
@@ -26,7 +26,7 @@ INSTALLED_APPS = [
     "django.contrib.sessions",
     "django.contrib.messages",
     "django.contrib.staticfiles",
-    # Helm apps
+    # Hull apps
     "core",
     "projects",
     "deploys",
@@ -99,10 +99,10 @@ DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 LOGIN_URL = "/admin/login/"
 
 # ---------------------------------------------------------------------------
-# Helm platform configuration
+# Hull platform configuration
 # ---------------------------------------------------------------------------
 
-# Where Helm keeps cloned repos, worktrees, and per-deployment runtime data.
+# Where Hull keeps cloned repos, worktrees, and per-deployment runtime data.
 HELM_DATA_DIR = Path(os.environ.get("HELM_DATA_DIR", BASE_DIR / ".helm_data"))
 HELM_REPOS_DIR = HELM_DATA_DIR / "repos"
 HELM_WORKTREES_DIR = HELM_DATA_DIR / "worktrees"
@@ -119,7 +119,7 @@ HELM_BASE_URL = os.environ.get("HELM_BASE_URL", "http://localhost:8000")
 
 # User-facing product brand (the code/package/env names stay "helm"/"HELM_*").
 # Rename the product here in one place.
-HELM_PRODUCT_NAME = os.environ.get("HELM_PRODUCT_NAME", "Helm")
+HELM_PRODUCT_NAME = os.environ.get("HELM_PRODUCT_NAME", "Hull")
 HELM_PRODUCT_TAGLINE = os.environ.get(
     "HELM_PRODUCT_TAGLINE", "The autonomous software operating system"
 )
@@ -128,7 +128,7 @@ HELM_PRODUCT_TAGLINE = os.environ.get(
 HELM_CLAUDE_BIN = os.environ.get("HELM_CLAUDE_BIN", "claude")
 HELM_AGENT_MODEL = os.environ.get("HELM_AGENT_MODEL", "claude-opus-4-8")
 
-# Temporal — orchestration backend. If unreachable, Helm falls back to an
+# Temporal — orchestration backend. If unreachable, Hull falls back to an
 # in-process threaded runner so the product still works without the server.
 HELM_TEMPORAL_HOST = os.environ.get("HELM_TEMPORAL_HOST", "localhost:7233")
 HELM_TEMPORAL_NAMESPACE = os.environ.get("HELM_TEMPORAL_NAMESPACE", "default")

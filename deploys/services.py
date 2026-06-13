@@ -53,7 +53,7 @@ def allocate_port() -> int:
             continue
         if _port_is_free(port):
             return port
-    raise RuntimeError("No free port available in the Helm port range.")
+    raise RuntimeError("No free port available in the Hull port range.")
 
 
 # ---------------------------------------------------------------------------
@@ -71,7 +71,7 @@ def _venv_python(project) -> str:
 
 
 def _clean_env(extra: dict | None = None) -> dict:
-    """A child-process environment with Helm's own Django context stripped, so a
+    """A child-process environment with Hull's own Django context stripped, so a
     managed app uses its OWN settings module rather than inheriting helm.settings
     / PYTHONPATH from the control-plane process."""
     env = dict(os.environ)

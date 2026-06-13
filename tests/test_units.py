@@ -1,9 +1,9 @@
-"""Fast, deterministic unit tests for Helm's core logic (no threads, no agents,
+"""Fast, deterministic unit tests for Hull's core logic (no threads, no agents,
 no network). Run with `pytest` or `python manage.py test tests`.
 
 These back the machine-checkable claims in rubric.md: runtime detection,
 traceback->incident parsing + dedup, and the env isolation that keeps managed
-apps from inheriting Helm's settings.
+apps from inheriting Hull's settings.
 """
 
 import os

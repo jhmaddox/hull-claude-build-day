@@ -1,6 +1,6 @@
 """Orchestration dispatcher.  [OWNER: Slice C agent]
 
-Single entry point the rest of Helm calls to run durable, observable
+Single entry point the rest of Hull calls to run durable, observable
 workflows. Backed by Temporal when HELM_USE_TEMPORAL=1 and the server is
 reachable; otherwise falls back to a threaded in-process runner so the product
 always works. Keep these top-level functions stable — UI/services call them.
@@ -210,7 +210,7 @@ def run_feature_agent(agent_run_id: int):
 def _project_python(project) -> str:
     """Best-effort path to the project's interpreter.
 
-    Prefers the per-project venv Helm's deploys layer provisions (which has the
+    Prefers the per-project venv Hull's deploys layer provisions (which has the
     project's installed deps), then an in-repo venv, then the current
     interpreter.
     """
@@ -237,8 +237,8 @@ def _project_python(project) -> str:
 
 
 def _clean_subprocess_env() -> dict:
-    """A child-process env with Helm's own Django/venv vars removed, so the
-    managed project loads ITS settings/interpreter, not Helm's."""
+    """A child-process env with Hull's own Django/venv vars removed, so the
+    managed project loads ITS settings/interpreter, not Hull's."""
     env = {**os.environ, "PYTHONUNBUFFERED": "1"}
     for key in ("DJANGO_SETTINGS_MODULE", "PYTHONPATH", "VIRTUAL_ENV"):
         env.pop(key, None)

@@ -24,7 +24,7 @@ from core.models import Event
 
 from .models import AgentRun, Worktree
 
-GIT_USER_NAME = "Helm Agent"
+GIT_USER_NAME = "Hull Agent"
 GIT_USER_EMAIL = "agent@helm.dev"
 
 

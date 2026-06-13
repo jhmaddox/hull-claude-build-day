@@ -23,7 +23,7 @@ def _adopt_deployments():
 
 
 def dashboard(request):
-    """The Helm mission-control home: everything at a glance."""
+    """The Hull mission-control home: everything at a glance."""
     _adopt_deployments()
     ctx = {
         "projects": Project.objects.all()[:12],

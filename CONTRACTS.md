@@ -1,14 +1,14 @@
-# Helm — Build Contracts (read this first)
+# Hull — Build Contracts (read this first)
 
-**Helm** is an all-in-one autonomous software operating system: version control,
+**Hull** is an all-in-one autonomous software operating system: version control,
 CI/CD, deployments, observability, and incident response — operated by a crew of
 Claude agents. One control plane (this Django app) that mashes together GitHub +
 Vercel + PagerDuty + Datadog, run autonomously.
 
-**The money-shot demo:** a production app throws an error → Helm detects it →
+**The money-shot demo:** a production app throws an error → Hull detects it →
 opens an incident (PagerDuty-style) → spawns a Claude agent in an isolated git
 worktree → the agent fixes the root cause + adds a regression test → opens a PR
-in Helm's own PR/diff UI → CI runs → green → merge → redeploy. Autonomously.
+in Hull's own PR/diff UI → CI runs → green → merge → redeploy. Autonomously.
 
 ## Stack & conventions
 - Django 5.1, SQLite, server-rendered templates + **HTMX** (CDN already in base.html).
