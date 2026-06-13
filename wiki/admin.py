@@ -1,6 +1,6 @@
 from django.contrib import admin
 
-from .models import Page, PageLink, PageRevision, Space
+from .models import Page, PageLink, PageRef, PageRevision, Space
 
 
 @admin.register(Space)
@@ -35,3 +35,11 @@ class PageLinkAdmin(admin.ModelAdmin):
     list_filter = ("org",)
     search_fields = ("target_title",)
     raw_id_fields = ("source", "target")
+
+
+@admin.register(PageRef)
+class PageRefAdmin(admin.ModelAdmin):
+    list_display = ("page", "kind", "label", "org", "created_at")
+    list_filter = ("org",)
+    raw_id_fields = ("page", "project", "pull_request", "incident")
+    readonly_fields = ("created_at",)
