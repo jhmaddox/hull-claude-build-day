@@ -3,6 +3,7 @@
 **Live:** https://hull.dev-reservclaims.com  (demo login: `demo` / `demo12345`, org "Acme Inc")
 **Repo:** https://github.com/jhmaddox/hull-claude-build-day
 **Brief:** [brief.md](brief.md) · **Rubric:** [rubric.md](rubric.md) · **Build contracts:** [CONTRACTS.md](CONTRACTS.md)
+**Session log:** [transcript/session-log.md](transcript/session-log.md) — the Claude Code session that built & operated Hull.
 
 ---
 
