@@ -1,0 +1,34 @@
+{% extends "store/base.html" %}
+{% block title %}PocketShop — small goods, shipped fast{% endblock %}
+{% block content %}
+<section class="hero">
+  <h1>Small goods, big delight.</h1>
+  <p>A tightly curated shop of everyday essentials. Free returns, carbon-neutral
+     shipping, and a 30-day happiness guarantee.</p>
+</section>
+
+<div class="section-head">
+  <h2>Featured products</h2>
+  <span class="muted">{{ products|length }} items</span>
+</div>
+
+<div class="grid">
+  {% for product in products %}
+  <div class="card">
+    <div class="card-art" style="background: linear-gradient(135deg, {{ product.accent }}22, {{ product.accent }}55);">
+      <span>{{ product.emoji }}</span>
+    </div>
+    <div class="card-body">
+      <h3><a href="{% url 'store:product' product.slug %}">{{ product.name }}</a></h3>
+      <div class="card-tagline">{{ product.tagline }}</div>
+      <div class="card-foot">
+        <span class="price">{{ product.price_display }}</span>
+        <a class="btn btn-sm" href="{% url 'store:add_to_cart' product.slug %}">Add to cart</a>
+      </div>
+    </div>
+  </div>
+  {% empty %}
+  <p class="muted">No products available yet.</p>
+  {% endfor %}
+</div>
+{% endblock %}

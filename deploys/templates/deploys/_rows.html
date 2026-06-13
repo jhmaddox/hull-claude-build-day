@@ -1,0 +1,27 @@
+{% load helm_extras %}
+{% for d in deployments %}
+<tr>
+  <td><a class="link" href="{{ d.environment.project.get_absolute_url }}">{{ d.environment.project.name }}</a></td>
+  <td>{{ d.environment.name }}</td>
+  <td class="mono"><a class="link" href="/deploys/{{ d.pk }}/">{{ d.commit_sha|slice:":8"|default:"—" }}</a></td>
+  <td><span class="badge {{ d.status|status_badge }}">{{ d.get_status_display }}</span></td>
+  <td><span class="badge {{ d.health|status_badge }}">{{ d.get_health_display }}</span></td>
+  <td class="mono">{{ d.port|default:"—" }}</td>
+  <td>
+    {% if d.status == 'live' %}<a class="link" href="{{ d.public_url }}" target="_blank">Open ↗</a>{% else %}<span class="faint">—</span>{% endif %}
+  </td>
+  <td class="muted nowrap">{{ d.created_at|timesince }} ago</td>
+  <td class="right nowrap">
+    {% if d.status == 'live' or d.status == 'building' %}
+    <form method="post" action="/deploys/{{ d.pk }}/stop/" style="display:inline;">
+      {% csrf_token %}<button class="btn btn-sm btn-danger" type="submit">Stop</button>
+    </form>
+    {% endif %}
+    <form method="post" action="/deploys/{{ d.pk }}/restart/" style="display:inline;">
+      {% csrf_token %}<button class="btn btn-sm" type="submit">Restart</button>
+    </form>
+  </td>
+</tr>
+{% empty %}
+<tr><td colspan="9" class="empty">No deployments yet.</td></tr>
+{% endfor %}

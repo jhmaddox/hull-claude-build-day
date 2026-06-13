@@ -1,0 +1,82 @@
+{% extends "base.html" %}
+{% load helm_extras %}
+{% block title %}PR #{{ pr.number }}{% endblock %}
+{% block crumbs %}<a class="link" href="{% url 'vcs:list' %}">Pull Requests</a> <span class="muted">/ #{{ pr.number }}</span>{% endblock %}
+
+{% block content %}
+<div class="row between mb-16">
+  <div>
+    <div class="row gap-8">
+      <span class="badge {{ pr.status|status_badge }}">{{ pr.get_status_display }}</span>
+      <div class="title-xl">#{{ pr.number }} · {{ pr.title }}</div>
+    </div>
+    <div class="muted">
+      {{ pr.project.name }} · <span class="mono">{{ pr.head_branch }} → {{ pr.base_branch }}</span> · by {{ pr.author }}
+    </div>
+  </div>
+  <div class="row gap-8">
+    <form method="post" action="{% url 'vcs:pr_ci' pr.pk %}">
+      {% csrf_token %}
+      <button class="btn" type="submit">🧪 Run CI</button>
+    </form>
+    <form method="post" action="{% url 'vcs:pr_merge' pr.pk %}">
+      {% csrf_token %}
+      <button class="btn btn-success" type="submit" {% if pr.status != 'open' %}disabled{% endif %}>⑃ Merge</button>
+    </form>
+  </div>
+</div>
+
+<div class="grid grid-4 mb-16">
+  <div class="card stat"><div class="label">Additions</div><div class="value success">+{{ pr.additions }}</div></div>
+  <div class="card stat"><div class="label">Deletions</div><div class="value danger">−{{ pr.deletions }}</div></div>
+  <div class="card stat"><div class="label">Files</div><div class="value">{{ pr.files_changed }}</div></div>
+  <div class="card stat"><div class="label">CI</div><div class="value" style="font-size:20px;"><span class="badge {{ pr.ci_status|status_badge }}">{{ pr.get_ci_status_display }}</span></div></div>
+</div>
+
+<div class="grid" style="grid-template-columns: 1.7fr 1fr;">
+  <div class="col">
+    {% if pr.description %}
+    <div class="card">
+      <div class="card-head"><h2>Description</h2></div>
+      <pre class="code">{{ pr.description }}</pre>
+    </div>
+    {% endif %}
+
+    <div class="card pad-0">
+      <div class="card-head" style="padding:16px 18px 0;"><h2>Diff</h2><span class="muted small mono">{{ pr.head_commit|slice:":8" }}</span></div>
+      <div style="padding:0 14px 14px;">
+        {{ diff_html }}
+      </div>
+    </div>
+  </div>
+
+  <div class="col">
+    <div class="card">
+      <div class="card-head"><h2>Linked agent runs</h2></div>
+      <div class="list">
+        {% for a in agent_runs %}
+        <a class="list-row" href="/agents/{{ a.pk }}/">
+          <span class="badge badge-accent">{{ a.get_kind_display }}</span>
+          <div class="grow"><strong>{{ a.title }}</strong></div>
+          <span class="badge {{ a.status|status_badge }}">{{ a.get_status_display }}</span>
+        </a>
+        {% empty %}<div class="empty small">None.</div>{% endfor %}
+      </div>
+    </div>
+
+    {% if incidents %}
+    <div class="card">
+      <div class="card-head"><h2>Linked incidents</h2></div>
+      <div class="list">
+        {% for inc in incidents %}
+        <a class="list-row" href="{{ inc.get_absolute_url }}">
+          <span class="badge badge-danger">⚠</span>
+          <div class="grow"><strong>INC-{{ inc.number }}</strong> {{ inc.title }}</div>
+        </a>
+        {% endfor %}
+      </div>
+    </div>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

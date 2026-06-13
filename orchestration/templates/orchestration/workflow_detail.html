@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+{% load helm_extras %}
+{% block title %}{{ run.name }}{% endblock %}
+{% block crumbs %}<a class="muted" href="/orchestration/">Orchestration</a> <span class="faint">/</span> {{ run.name }}{% endblock %}
+
+{% block content %}
+<div class="row between mb-16">
+  <div>
+    <div class="title-xl">{{ run.name }}</div>
+    <div class="muted">{{ run.backend }} backend · {{ run.created_at|timesince }} ago · {{ run.duration_s|floatformat:1 }}s</div>
+  </div>
+  {% if run.status == 'running' %}
+  <span class="badge badge-warn"><span class="spinner" style="width:10px;height:10px;"></span> Running</span>
+  {% else %}<span class="badge {{ run.status|status_badge }}">{{ run.get_status_display }}</span>{% endif %}
+</div>
+
+{% if run.project %}
+<div class="card mb-16">
+  <div class="row between">
+    <div><strong>{{ run.project.name }}</strong>{% if run.ref_type %}<div class="muted small">{{ run.ref_type }} #{{ run.ref_id }}</div>{% endif %}</div>
+    <a class="btn btn-sm btn-ghost" href="/projects/{{ run.project.slug }}/">Open project →</a>
+  </div>
+</div>
+{% endif %}
+
+<div class="card pad-0">
+  <div class="card-head" style="padding:16px 18px 0;"><h2>Detail</h2></div>
+  <div style="padding:0 18px 18px;">
+    <div class="logs">{{ run.detail|default:"(no detail recorded)" }}</div>
+  </div>
+</div>
+{% endblock %}

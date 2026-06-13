@@ -1,0 +1,29 @@
+{% load helm_extras %}
+{% comment %}
+  Live-tailing log block. Self-polls every 1.5s while running; stops once the
+  run is done/failed by simply not re-issuing the hx-trigger.
+{% endcomment %}
+<div id="stream"
+     {% if run.status == 'queued' or run.status == 'running' %}
+     hx-get="{% url 'agents:stream' run.pk %}"
+     hx-trigger="every 1.5s"
+     hx-swap="outerHTML"
+     {% endif %}>
+  <div class="row between mb-8">
+    <div class="row gap-8">
+      <span class="badge {{ run.status|status_badge }}">
+        {% if run.status == 'running' %}<span class="spinner"></span>{% endif %}{{ run.get_status_display }}
+      </span>
+      {% if run.num_turns %}<span class="muted small">{{ run.num_turns }} turns</span>{% endif %}
+      {% if run.cost_usd %}<span class="muted small mono">${{ run.cost_usd|floatformat:4 }}</span>{% endif %}
+    </div>
+    {% if run.status == 'running' or run.status == 'queued' %}
+      <span class="pill pill-live"><span class="dot dot-live"></span> tailing</span>
+    {% endif %}
+  </div>
+  <div class="logs" id="agent-logs">{{ run.output }}{% if not run.output %}<span class="muted">waiting for output…</span>{% endif %}</div>
+  {% if run.error %}<div class="toast toast-error mt-8">{{ run.error }}</div>{% endif %}
+  <script>
+    (function(){ var l=document.getElementById('agent-logs'); if(l){ l.scrollTop=l.scrollHeight; } })();
+  </script>
+</div>

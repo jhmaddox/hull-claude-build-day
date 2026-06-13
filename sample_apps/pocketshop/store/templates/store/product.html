@@ -1,0 +1,17 @@
+{% extends "store/base.html" %}
+{% block title %}{{ product.name }} — PocketShop{% endblock %}
+{% block content %}
+<p><a href="{% url 'store:home' %}">← Back to shop</a></p>
+<div class="pd">
+  <div class="pd-art" style="background: linear-gradient(135deg, {{ product.accent }}22, {{ product.accent }}55);">
+    {{ product.emoji }}
+  </div>
+  <div>
+    <h1>{{ product.name }}</h1>
+    <div class="card-tagline">{{ product.tagline }}</div>
+    <div class="price">{{ product.price_display }}</div>
+    <p>{{ product.description }}</p>
+    <a class="btn btn-lg" href="{% url 'store:add_to_cart' product.slug %}">Add to cart</a>
+  </div>
+</div>
+{% endblock %}

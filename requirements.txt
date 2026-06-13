@@ -1,0 +1,9 @@
+django==5.1.15
+gunicorn==26.0.0
+psutil==7.2.2
+pytest==9.0.3
+pytest-django==4.12.0
+python-dotenv==1.2.2
+requests==2.34.2
+temporalio==1.28.0
+whitenoise==6.12.0

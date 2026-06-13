@@ -1,0 +1,128 @@
+{% extends "base.html" %}
+{% load helm_extras %}
+{% block title %}{{ project.name }}{% endblock %}
+{% block crumbs %}<a class="link" href="/projects/">Projects</a> <span class="muted">/ {{ project.name }}</span>{% endblock %}
+
+{% block content %}
+<div class="row between mb-16">
+  <div>
+    <div class="title-xl">{{ project.name }}</div>
+    <div class="muted mono small" style="word-break:break-all;">{{ project.repo_url|default:project.local_path }}</div>
+    {% if project.description %}<div class="muted mt-8">{{ project.description }}</div>{% endif %}
+  </div>
+  <div class="row gap-8">
+    <span class="badge badge-neutral">{{ project.framework }}</span>
+    <span class="badge badge-neutral mono">{{ project.default_branch }}</span>
+    <span class="badge {{ project.status|status_badge }}">{{ project.get_status_display }}</span>
+  </div>
+</div>
+
+{% if project.status == 'failed' and project.import_log %}
+<div class="card mb-16" style="border-color: rgba(248,113,113,.35);">
+  <div class="card-head"><h2 style="color:var(--danger)">Import failed</h2></div>
+  <pre class="logs">{{ project.import_log }}</pre>
+</div>
+{% endif %}
+
+<div class="grid" style="grid-template-columns: 1.5fr 1fr;">
+  <div class="col">
+    <!-- Environments -->
+    <div class="card pad-0">
+      <div class="card-head" style="padding:16px 18px 0;"><h2>Environments</h2></div>
+      <div class="list">
+        {% for env in environments %}
+        {% with dep=env.current_deployment %}
+        <div class="list-row">
+          {% if dep.status == 'live' %}<span class="dot dot-live"></span>{% else %}<span class="dot" style="background:var(--faint);"></span>{% endif %}
+          <div class="grow">
+            <strong>{{ env.name }}</strong>
+            <span class="badge badge-neutral mono" style="margin-left:6px;">{{ env.branch }}</span>
+            <div class="muted small mono">
+              {% if dep %}{{ dep.commit_sha|slice:":8" }} · {{ dep.get_status_display }}{% if dep.port %} · :{{ dep.port }}{% endif %}{% else %}never deployed{% endif %}
+            </div>
+          </div>
+          {% if dep.status == 'live' %}
+            <a class="btn btn-sm" href="{{ env.public_url }}" target="_blank">Open ↗</a>
+          {% endif %}
+          <form method="post" action="/projects/{{ project.slug }}/deploy/{{ env.pk }}/" style="display:inline;">
+            {% csrf_token %}
+            <button type="submit" class="btn btn-sm btn-primary">Deploy</button>
+          </form>
+        </div>
+        {% endwith %}
+        {% empty %}
+        <div class="empty small">No environments.</div>
+        {% endfor %}
+      </div>
+    </div>
+
+    <!-- Deployments history -->
+    <div class="card pad-0">
+      <div class="card-head" style="padding:16px 18px 0;"><h2>Deployments</h2><a class="link small" href="/deploys/">All →</a></div>
+      <div style="overflow:auto;">
+        <table>
+          <thead><tr><th>Env</th><th>Commit</th><th>Status</th><th>Health</th><th>Port</th><th>Age</th></tr></thead>
+          <tbody>
+            {% for d in deployments %}
+            <tr onclick="window.location='/deploys/{{ d.pk }}/'" style="cursor:pointer;">
+              <td>{{ d.environment.name }}</td>
+              <td class="mono">{{ d.commit_sha|slice:":8"|default:"—" }}</td>
+              <td><span class="badge {{ d.status|status_badge }}">{{ d.get_status_display }}</span></td>
+              <td><span class="badge {{ d.health|status_badge }}">{{ d.get_health_display }}</span></td>
+              <td class="mono">{{ d.port|default:"—" }}</td>
+              <td class="muted">{{ d.created_at|timesince }} ago</td>
+            </tr>
+            {% empty %}
+            <tr><td colspan="6" class="empty small">No deployments yet.</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <div class="col">
+    <!-- Agent runs -->
+    <div class="card pad-0">
+      <div class="card-head" style="padding:16px 18px 0;"><h2>Agent runs</h2></div>
+      <div class="list">
+        {% for a in agent_runs %}
+        <a class="list-row" href="/agents/{{ a.pk }}/">
+          <span class="feed-ico {{ a.status }}">✦</span>
+          <div class="grow"><strong>{{ a.title }}</strong>
+            <div class="muted small">{{ a.get_kind_display }} · {{ a.get_status_display }}</div></div>
+        </a>
+        {% empty %}<div class="empty small">No agent runs.</div>{% endfor %}
+      </div>
+    </div>
+
+    <!-- Pull requests -->
+    <div class="card pad-0">
+      <div class="card-head" style="padding:16px 18px 0;"><h2>Pull requests</h2></div>
+      <div class="list">
+        {% for pr in pull_requests %}
+        <a class="list-row" href="{{ pr.get_absolute_url }}">
+          <span class="badge {{ pr.status|status_badge }}">#{{ pr.number }}</span>
+          <div class="grow"><strong>{{ pr.title }}</strong>
+            <div class="muted small">{{ pr.get_status_display }} · CI {{ pr.get_ci_status_display }}</div></div>
+        </a>
+        {% empty %}<div class="empty small">No pull requests.</div>{% endfor %}
+      </div>
+    </div>
+
+    <!-- Incidents -->
+    <div class="card pad-0">
+      <div class="card-head" style="padding:16px 18px 0;"><h2>Incidents</h2></div>
+      <div class="list">
+        {% for inc in incidents %}
+        <a class="list-row" href="{{ inc.get_absolute_url }}">
+          <span class="badge {{ inc.severity|status_badge }}">{{ inc.get_severity_display }}</span>
+          <div class="grow"><strong>INC-{{ inc.number }}</strong> {{ inc.title }}
+            <div class="muted small">{{ inc.get_status_display }}</div></div>
+        </a>
+        {% empty %}<div class="empty small">No incidents — all clear.</div>{% endfor %}
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

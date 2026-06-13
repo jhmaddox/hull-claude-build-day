@@ -1,0 +1,46 @@
+{% load static %}<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}PocketShop{% endblock %}</title>
+  <link rel="stylesheet" href="{% static 'store/shop.css' %}">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+</head>
+<body>
+  <header class="topbar">
+    <div class="topbar-inner">
+      <a class="brand" href="{% url 'store:home' %}">
+        <span class="brand-mark">🛍️</span>
+        <span class="brand-name">PocketShop</span>
+      </a>
+      <nav class="topnav">
+        <a href="{% url 'store:home' %}">Shop</a>
+        <a class="cart-link" href="{% url 'store:cart' %}">
+          Cart
+          {% if cart_count %}<span class="cart-badge">{{ cart_count }}</span>{% endif %}
+        </a>
+      </nav>
+    </div>
+  </header>
+
+  {% if messages %}
+  <div class="flashes">
+    {% for message in messages %}
+      <div class="flash flash-{{ message.tags }}">{{ message }}</div>
+    {% endfor %}
+  </div>
+  {% endif %}
+
+  <main class="container">
+    {% block content %}{% endblock %}
+  </main>
+
+  <footer class="footer">
+    <div class="container">
+      <span>© 2026 PocketShop — small goods, shipped fast.</span>
+      <span class="footer-links">Free returns · Carbon-neutral shipping · 24/7 support</span>
+    </div>
+  </footer>
+</body>
+</html>

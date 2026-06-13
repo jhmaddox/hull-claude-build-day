@@ -1,0 +1,79 @@
+{% extends "base.html" %}
+{% load helm_extras %}
+{% block title %}{{ run.title }}{% endblock %}
+{% block crumbs %}<a class="link" href="{% url 'agents:list' %}">Agents</a> <span class="muted">/ {{ run.title }}</span>{% endblock %}
+
+{% block content %}
+<div class="row between mb-16">
+  <div>
+    <div class="row gap-8">
+      <span class="badge badge-accent">{{ run.get_kind_display }}</span>
+      <div class="title-xl">{{ run.title }}</div>
+    </div>
+    <div class="muted">{{ run.project.name }}{% if run.worktree %} · <span class="mono">{{ run.worktree.branch }}</span>{% endif %}</div>
+  </div>
+</div>
+
+<div class="grid grid-4 mb-16">
+  <div class="card stat"><div class="label">Status</div><div class="value {% if run.status == 'done' %}success{% elif run.status == 'failed' %}danger{% else %}accent{% endif %}" style="font-size:20px;">{{ run.get_status_display }}</div></div>
+  <div class="card stat"><div class="label">Turns</div><div class="value">{{ run.num_turns }}</div></div>
+  <div class="card stat"><div class="label">Cost</div><div class="value accent">{% if run.cost_usd %}${{ run.cost_usd|floatformat:4 }}{% else %}—{% endif %}</div></div>
+  <div class="card stat"><div class="label">Age</div><div class="value" style="font-size:20px;">{{ run.created_at|timesince }}</div></div>
+</div>
+
+<div class="grid" style="grid-template-columns: 1.6fr 1fr;">
+  <div class="col">
+    <div class="card">
+      <div class="card-head"><h2>Live output</h2></div>
+      {% include "agents/_stream.html" %}
+    </div>
+
+    {% if run.result_summary %}
+    <div class="card">
+      <div class="card-head"><h2>Result</h2></div>
+      <pre class="code">{{ run.result_summary }}</pre>
+    </div>
+    {% endif %}
+  </div>
+
+  <div class="col">
+    <div class="card">
+      <div class="card-head"><h2>Brief</h2></div>
+      <pre class="code">{{ run.prompt }}</pre>
+    </div>
+
+    <div class="card">
+      <div class="card-head"><h2>Links</h2></div>
+      <div class="list">
+        {% if run.pull_request %}
+        <a class="list-row" href="{{ run.pull_request.get_absolute_url }}">
+          <span class="badge badge-accent">⑂ PR</span>
+          <div class="grow"><strong>#{{ run.pull_request.number }}</strong> {{ run.pull_request.title }}</div>
+          <span class="badge {{ run.pull_request.status|status_badge }}">{{ run.pull_request.get_status_display }}</span>
+        </a>
+        {% endif %}
+        {% if run.incident %}
+        <a class="list-row" href="{{ run.incident.get_absolute_url }}">
+          <span class="badge badge-danger">⚠ INC</span>
+          <div class="grow"><strong>INC-{{ run.incident.number }}</strong> {{ run.incident.title }}</div>
+        </a>
+        {% endif %}
+        {% if run.worktree %}
+        <div class="list-row">
+          <span class="badge badge-neutral">⑂ Worktree</span>
+          <div class="grow">
+            <strong class="mono">{{ run.worktree.branch }}</strong>
+            <div class="muted small mono">{{ run.worktree.path }}</div>
+            <div class="muted small">off {{ run.worktree.base_branch }}{% if run.worktree.base_commit %} @ {{ run.worktree.base_commit|slice:":8" }}{% endif %}</div>
+          </div>
+          <span class="badge {{ run.worktree.status|status_badge }}">{{ run.worktree.get_status_display }}</span>
+        </div>
+        {% endif %}
+        {% if not run.pull_request and not run.incident and not run.worktree %}
+        <div class="empty small">No links yet.</div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

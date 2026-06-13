@@ -1,0 +1,8 @@
+{% load helm_extras %}
+<div class="row gap-8 wrap" id="dep-status">
+  <span class="badge {{ deployment.status|status_badge }}">{{ deployment.get_status_display }}</span>
+  <span class="badge {{ deployment.health|status_badge }}">{{ deployment.get_health_display }}</span>
+  {% if deployment.port %}<span class="badge badge-neutral mono">:{{ deployment.port }}</span>{% endif %}
+  {% if deployment.pid %}<span class="badge badge-neutral mono">pid {{ deployment.pid }}</span>{% endif %}
+  {% if deployment.status == 'live' %}<a class="btn btn-sm btn-success" href="{{ deployment.public_url }}" target="_blank">Open ↗</a>{% endif %}
+</div>

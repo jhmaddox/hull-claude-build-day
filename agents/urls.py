@@ -4,5 +4,9 @@ from . import views
 
 app_name = "agents"
 
-# NOTE: This app's build agent owns this file. Add URL patterns here.
-urlpatterns = []
+urlpatterns = [
+    path("", views.agent_list, name="list"),
+    path("new/", views.agent_new, name="new"),
+    path("<int:pk>/", views.agent_detail, name="detail"),
+    path("<int:pk>/stream/", views.agent_stream, name="stream"),
+]

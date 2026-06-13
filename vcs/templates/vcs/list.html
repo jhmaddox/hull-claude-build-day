@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+{% load helm_extras %}
+{% block title %}Pull Requests{% endblock %}
+{% block crumbs %}<span class="muted">Pull Requests</span>{% endblock %}
+
+{% block content %}
+<div class="row between mb-16">
+  <div>
+    <div class="title-xl">Pull Requests</div>
+    <div class="muted">Real git branches, diffed and mergeable — opened by the agent crew.</div>
+  </div>
+</div>
+
+<div class="card pad-0 mb-16">
+  <div class="card-head" style="padding:16px 18px 0;"><h2>Open</h2></div>
+  <table>
+    <thead><tr><th>#</th><th>Title</th><th>Project</th><th>Changes</th><th>Files</th><th>CI</th><th>Status</th></tr></thead>
+    <tbody>
+      {% for pr in open_prs %}
+      <tr onclick="window.location='{{ pr.get_absolute_url }}'" style="cursor:pointer;">
+        <td class="mono">#{{ pr.number }}</td>
+        <td><strong>{{ pr.title }}</strong><div class="muted small mono">{{ pr.head_branch }} → {{ pr.base_branch }}</div></td>
+        <td>{{ pr.project.name }}</td>
+        <td class="mono"><span style="color:var(--success)">+{{ pr.additions }}</span> <span style="color:var(--danger)">−{{ pr.deletions }}</span></td>
+        <td>{{ pr.files_changed }}</td>
+        <td><span class="badge {{ pr.ci_status|status_badge }}">{{ pr.get_ci_status_display }}</span></td>
+        <td><span class="badge {{ pr.status|status_badge }}">{{ pr.get_status_display }}</span></td>
+      </tr>
+      {% empty %}
+      <tr><td colspan="7"><div class="empty">No open pull requests.</div></td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+{% if other_prs %}
+<div class="card pad-0">
+  <div class="card-head" style="padding:16px 18px 0;"><h2>Merged &amp; closed</h2></div>
+  <table>
+    <thead><tr><th>#</th><th>Title</th><th>Project</th><th>Changes</th><th>Status</th></tr></thead>
+    <tbody>
+      {% for pr in other_prs %}
+      <tr onclick="window.location='{{ pr.get_absolute_url }}'" style="cursor:pointer;">
+        <td class="mono">#{{ pr.number }}</td>
+        <td>{{ pr.title }}</td>
+        <td>{{ pr.project.name }}</td>
+        <td class="mono"><span style="color:var(--success)">+{{ pr.additions }}</span> <span style="color:var(--danger)">−{{ pr.deletions }}</span></td>
+        <td><span class="badge {{ pr.status|status_badge }}">{{ pr.get_status_display }}</span></td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
+{% endblock %}

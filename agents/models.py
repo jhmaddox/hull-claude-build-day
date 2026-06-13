@@ -98,7 +98,14 @@ class AgentRun(models.Model):
         return f"[{self.kind}] {self.title}"
 
     def append_output(self, text):
-        """Append streamed text and persist just that field."""
+        """Append streamed text and persist just that field.
+
+        Uses Concat (not ``F("output") + text``) because SQLite coerces ``+``
+        to numeric addition, which would turn the text column into 0.
+        """
+        from django.db.models.functions import Concat
+        from django.db.models import Value
+
         AgentRun.objects.filter(pk=self.pk).update(
-            output=models.F("output") + text
+            output=Concat(models.F("output"), Value(text))
         )

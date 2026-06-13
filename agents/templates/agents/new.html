@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+{% block title %}Launch agent{% endblock %}
+{% block crumbs %}<a class="link" href="{% url 'agents:list' %}">Agents</a> <span class="muted">/ Launch</span>{% endblock %}
+
+{% block content %}
+<div class="row between mb-16">
+  <div>
+    <div class="title-xl">Launch an agent</div>
+    <div class="muted">Spin up a Claude agent in a fresh worktree to do work and open a PR.</div>
+  </div>
+</div>
+
+<div class="card" style="max-width:760px;">
+  <form method="post" action="{% url 'agents:new' %}">
+    {% csrf_token %}
+    <div class="grid grid-2">
+      <div class="field">
+        <label>Project</label>
+        <select name="project" required>
+          {% for p in projects %}<option value="{{ p.pk }}">{{ p.name }}</option>{% endfor %}
+        </select>
+      </div>
+      <div class="field">
+        <label>Kind</label>
+        <select name="kind">
+          {% for value, label in kinds %}<option value="{{ value }}">{{ label }}</option>{% endfor %}
+        </select>
+      </div>
+    </div>
+    <div class="field">
+      <label>Title</label>
+      <input type="text" name="title" placeholder="Add rate-limiting to the login endpoint" required>
+    </div>
+    <div class="field">
+      <label>Prompt / brief</label>
+      <textarea name="prompt" placeholder="Describe the task. The agent works autonomously in an isolated worktree." style="min-height:160px;" required></textarea>
+    </div>
+    <div class="row">
+      <button class="btn btn-primary" type="submit">✦ Launch agent</button>
+      <a class="btn btn-ghost" href="{% url 'agents:list' %}">Cancel</a>
+    </div>
+  </form>
+</div>
+{% endblock %}

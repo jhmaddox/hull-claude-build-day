@@ -1,0 +1,30 @@
+{% extends "base.html" %}
+{% load helm_extras %}
+{% block title %}Deployments{% endblock %}
+{% block crumbs %}<a class="link" href="/deploys/">Deployments</a>{% endblock %}
+
+{% block content %}
+<div class="row between mb-16">
+  <div>
+    <div class="title-xl">Deployments</div>
+    <div class="muted">Every build &amp; run Helm manages, with live health.</div>
+  </div>
+  <span class="pill pill-live"><span class="dot dot-live"></span> auto-refreshing</span>
+</div>
+
+<div class="card pad-0">
+  <div style="overflow:auto;">
+    <table>
+      <thead>
+        <tr>
+          <th>Project</th><th>Env</th><th>Commit</th><th>Status</th><th>Health</th>
+          <th>Port</th><th>URL</th><th>Age</th><th class="right">Actions</th>
+        </tr>
+      </thead>
+      <tbody hx-get="/deploys/rows/" hx-trigger="every 3s" hx-swap="innerHTML">
+        {% include "deploys/_rows.html" %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

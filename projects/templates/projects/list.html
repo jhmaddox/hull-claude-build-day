@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+{% load helm_extras %}
+{% block title %}Projects{% endblock %}
+{% block crumbs %}<a class="link" href="/projects/">Projects</a>{% endblock %}
+{% block actions %}
+  <a class="btn btn-primary" href="/projects/new/">+ Import project</a>
+{% endblock %}
+
+{% block content %}
+<div class="row between mb-16">
+  <div>
+    <div class="title-xl">Projects</div>
+    <div class="muted">Everything Helm operates — version control, deploys, ops.</div>
+  </div>
+</div>
+
+<div class="grid grid-auto">
+  {% for p in projects %}
+  <a class="card col" href="{{ p.get_absolute_url }}" style="gap:12px;">
+    <div class="row between">
+      <strong style="font-size:15px;">{{ p.name }}</strong>
+      <span class="badge {{ p.status|status_badge }}">{{ p.get_status_display }}</span>
+    </div>
+    <div class="muted small mono" style="word-break:break-all;">{{ p.repo_url|default:p.local_path }}</div>
+    {% if p.description %}<div class="muted small">{{ p.description|truncatechars:90 }}</div>{% endif %}
+    <div class="row gap-8 wrap mt-8">
+      <span class="badge badge-neutral">{{ p.framework }}</span>
+      <span class="badge badge-neutral">{{ p.environments.count }} env{{ p.environments.count|pluralize }}</span>
+      {% with live=0 %}{% endwith %}
+      {% for e in p.environments.all %}
+        {% if e.current_deployment.status == 'live' %}
+          <span class="badge badge-success"><span class="dot"></span> {{ e.name }} live</span>
+        {% endif %}
+      {% endfor %}
+    </div>
+  </a>
+  {% empty %}
+  <div class="card empty"><div class="big">⎈</div>No projects yet. <a class="link" href="/projects/new/">Import one</a> to begin.</div>
+  {% endfor %}
+</div>
+{% endblock %}

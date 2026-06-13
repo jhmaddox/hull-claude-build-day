@@ -1,0 +1,24 @@
+{% load helm_extras %}
+<table>
+  <thead>
+    <tr><th>Workflow</th><th>Status</th><th>Backend</th><th>Project</th><th>Detail</th><th>Started</th><th>Duration</th></tr>
+  </thead>
+  <tbody>
+    {% for r in runs %}
+    <tr onclick="window.location='/orchestration/{{ r.pk }}/'" style="cursor:pointer;">
+      <td><strong>{{ r.name }}</strong></td>
+      <td>
+        {% if r.status == 'running' %}<span class="badge badge-warn"><span class="spinner" style="width:10px;height:10px;"></span> Running</span>
+        {% else %}<span class="badge {{ r.status|status_badge }}">{{ r.get_status_display }}</span>{% endif %}
+      </td>
+      <td><span class="badge badge-neutral">{{ r.backend }}</span></td>
+      <td class="muted">{{ r.project.name|default:"—" }}</td>
+      <td class="muted small">{{ r.detail|truncatechars:60|default:"—" }}</td>
+      <td class="muted nowrap">{{ r.created_at|timesince }} ago</td>
+      <td class="muted nowrap">{{ r.duration_s|floatformat:1 }}s</td>
+    </tr>
+    {% empty %}
+    <tr><td colspan="7"><div class="empty"><div class="big">⟳</div>No workflows yet.</div></td></tr>
+    {% endfor %}
+  </tbody>
+</table>

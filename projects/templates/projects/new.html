@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+{% block title %}Import project{% endblock %}
+{% block crumbs %}<a class="link" href="/projects/">Projects</a> <span class="muted">/ Import</span>{% endblock %}
+
+{% block content %}
+<div class="row between mb-16">
+  <div>
+    <div class="title-xl">Import a project</div>
+    <div class="muted">Helm clones the repo, detects its runtime, and spins up staging + prod.</div>
+  </div>
+</div>
+
+<div class="card" style="max-width:640px;">
+  <form method="post" action="/projects/new/">
+    {% csrf_token %}
+    <div class="field">
+      <label for="name">Project name</label>
+      <input type="text" id="name" name="name" value="{{ name|default:'' }}" placeholder="My App" required>
+    </div>
+    <div class="field">
+      <label for="repo_url">Repository URL or local path</label>
+      <input type="text" id="repo_url" name="repo_url" value="{{ repo_url|default:'' }}"
+             placeholder="https://github.com/org/repo.git  ·  file:///path  ·  /abs/path" required>
+      <div class="muted tiny mt-8">Supports https, file://, and bare local paths.</div>
+    </div>
+    <div class="field">
+      <label for="description">Description <span class="faint">(optional)</span></label>
+      <textarea id="description" name="description" placeholder="What does this project do?">{{ description|default:'' }}</textarea>
+    </div>
+    <div class="row gap-8">
+      <button type="submit" class="btn btn-primary">🚀 Import &amp; deploy</button>
+      <a class="btn btn-ghost" href="/projects/">Cancel</a>
+    </div>
+  </form>
+</div>
+{% endblock %}

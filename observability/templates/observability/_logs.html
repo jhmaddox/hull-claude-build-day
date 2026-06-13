@@ -1,0 +1,7 @@
+{% load helm_extras %}
+<div class="logs" id="logs-{{ deployment.pk }}"
+     hx-get="/obs/deployment/{{ deployment.pk }}/logs/"
+     hx-trigger="every 2s"
+     hx-swap="outerHTML">
+{% for l in logs %}<div class="{% if l.level == 'error' %}l-error{% elif l.level == 'warning' %}l-warn{% elif l.level == 'info' %}l-info{% else %}l-ok{% endif %}">{{ l.message }}</div>{% empty %}<div class="l-info">No log lines yet.</div>{% endfor %}
+</div>

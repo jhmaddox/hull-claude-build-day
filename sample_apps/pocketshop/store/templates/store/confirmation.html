@@ -1,0 +1,23 @@
+{% extends "store/base.html" %}
+{% block title %}Order confirmed — PocketShop{% endblock %}
+{% block content %}
+<div class="panel confirm">
+  <div class="check">✅</div>
+  <h1>Order confirmed</h1>
+  <p>Thanks for shopping with PocketShop. A receipt is on its way{% if order.email %} to {{ order.email }}{% endif %}.</p>
+  <div class="ref">{{ order.reference }}</div>
+  <div class="summary" style="max-width: 420px; margin: 18px auto 0; text-align: left;">
+    {% for item in order.items.all %}
+    <div class="summary-row"><span>{{ item.name }} × {{ item.quantity }}</span><span>${{ item.line_total }}</span></div>
+    {% endfor %}
+    <div class="summary-row"><span>Subtotal</span><span>${{ order.subtotal }}</span></div>
+    {% if order.discount %}
+    <div class="summary-row"><span>Discount ({{ order.promo_code }})</span><span class="discount">−${{ order.discount }}</span></div>
+    {% endif %}
+    <div class="summary-row total"><span>Total</span><span>${{ order.total }}</span></div>
+  </div>
+  <div style="margin-top: 24px;">
+    <a class="btn" href="{% url 'store:home' %}">Continue shopping</a>
+  </div>
+</div>
+{% endblock %}

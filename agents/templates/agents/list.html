@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+{% load helm_extras %}
+{% block title %}Agents{% endblock %}
+{% block crumbs %}<span class="muted">Agents</span>{% endblock %}
+{% block actions %}
+  <a class="btn btn-primary" href="{% url 'agents:new' %}">+ Launch agent</a>
+{% endblock %}
+
+{% block content %}
+<div class="row between mb-16">
+  <div>
+    <div class="title-xl">Agents</div>
+    <div class="muted">Headless Claude sessions working in isolated git worktrees.</div>
+  </div>
+  {% if running %}<span class="pill pill-live"><span class="dot dot-live"></span> {{ running }} working</span>{% endif %}
+</div>
+
+<div class="card pad-0">
+  <div class="list">
+    {% for r in runs %}
+    <a class="list-row" href="{% url 'agents:detail' r.pk %}">
+      <span class="badge badge-accent">{{ r.get_kind_display }}</span>
+      <div class="grow">
+        <strong>{{ r.title }}</strong>
+        <div class="muted small">{{ r.project.name }}{% if r.worktree %} · {{ r.worktree.branch }}{% endif %}</div>
+      </div>
+      {% if r.cost_usd %}<span class="muted small mono">${{ r.cost_usd|floatformat:4 }}</span>{% endif %}
+      {% if r.num_turns %}<span class="muted small">{{ r.num_turns }} turns</span>{% endif %}
+      <span class="muted small">{{ r.created_at|timesince }} ago</span>
+      <span class="badge {{ r.status|status_badge }}">
+        {% if r.status == 'running' %}<span class="dot"></span>{% endif %}{{ r.get_status_display }}
+      </span>
+    </a>
+    {% empty %}
+    <div class="empty"><div class="big">✦</div>No agent runs yet. <a class="link" href="{% url 'agents:new' %}">Launch one</a>.</div>
+    {% endfor %}
+  </div>
+</div>
+{% endblock %}

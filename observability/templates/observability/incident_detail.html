@@ -1,0 +1,60 @@
+{% extends "base.html" %}
+{% load helm_extras %}
+{% block title %}INC-{{ incident.number }}{% endblock %}
+{% block crumbs %}<a class="muted" href="/obs/incidents/">Incidents</a> <span class="faint">/</span> INC-{{ incident.number }}{% endblock %}
+
+{% block content %}
+<div class="row between mb-16">
+  <div>
+    <div class="row gap-8">
+      <span class="title-xl">INC-{{ incident.number }}</span>
+      <span class="badge {{ incident.severity|status_badge }}">{{ incident.get_severity_display }}</span>
+    </div>
+    <div class="muted">{{ incident.title }}</div>
+  </div>
+  <div class="row gap-8">
+    {% if incident.status != 'resolved' %}
+    <form method="post" action="/obs/incidents/{{ incident.pk }}/remediate/">
+      {% csrf_token %}
+      <button class="btn btn-primary" type="submit" {% if is_remediating %}disabled{% endif %}>
+        {% if is_remediating %}<span class="spinner"></span> Remediating…{% else %}🔧 Remediate now{% endif %}
+      </button>
+    </form>
+    {% endif %}
+  </div>
+</div>
+
+<div class="grid" style="grid-template-columns: 1.5fr 1fr;">
+  <div class="col">
+    <div class="card">
+      <div class="card-head"><h2>Error</h2>
+        <span class="badge {{ incident.error_type|default:'error'|status_badge }} badge-danger">{{ incident.error_type }}</span>
+      </div>
+      <div class="mono" style="color:var(--danger);">{{ incident.error_message|default:"(no message)" }}</div>
+      <div class="divider"></div>
+      <div class="row gap-24 wrap">
+        <div><div class="label muted small">SUSPECT FILE</div><div class="mono">{{ incident.suspect_file|default:"—" }}{% if incident.suspect_line %}:{{ incident.suspect_line }}{% endif %}</div></div>
+        <div><div class="label muted small">OCCURRENCES</div><div class="mono">{{ incident.occurrences }}</div></div>
+        <div><div class="label muted small">FIRST SEEN</div><div class="mono">{{ incident.created_at|timesince }} ago</div></div>
+        {% if incident.deployment %}<div><div class="label muted small">DEPLOYMENT</div><div class="mono">{{ incident.deployment.environment.name }} @ {{ incident.deployment.commit_sha|slice:":8" }}</div></div>{% endif %}
+      </div>
+    </div>
+
+    <div class="card pad-0">
+      <div class="card-head" style="padding:16px 18px 0;"><h2>Traceback</h2></div>
+      <div style="padding:0 18px 18px;">
+        <div class="logs">{{ incident.traceback|default:"(no traceback captured)" }}</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="col">
+    <div id="inc-status"
+         hx-get="/obs/incidents/{{ incident.pk }}/status/"
+         hx-trigger="every 2s"
+         hx-swap="innerHTML">
+      {% include "observability/_incident_status.html" %}
+    </div>
+  </div>
+</div>
+{% endblock %}

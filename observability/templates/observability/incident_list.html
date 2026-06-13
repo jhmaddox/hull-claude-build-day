@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+{% load helm_extras %}
+{% block title %}Incidents{% endblock %}
+{% block crumbs %}<a class="muted" href="/obs/">Observability</a> <span class="faint">/</span> Incidents{% endblock %}
+
+{% block content %}
+<div class="row between mb-16">
+  <div>
+    <div class="title-xl">Incidents</div>
+    <div class="muted">{{ open_count }} active · auto-detected from production errors, auto-remediated by Claude.</div>
+  </div>
+</div>
+
+<div class="card pad-0">
+  <table>
+    <thead>
+      <tr>
+        <th>Incident</th><th>Severity</th><th>Status</th><th>Title</th>
+        <th>Occurrences</th><th>Project</th><th>Remediation</th><th>Age</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for inc in incidents %}
+      <tr onclick="window.location='{{ inc.get_absolute_url }}'" style="cursor:pointer;">
+        <td class="mono"><strong>INC-{{ inc.number }}</strong></td>
+        <td><span class="badge {{ inc.severity|status_badge }}">{{ inc.get_severity_display }}</span></td>
+        <td><span class="badge {{ inc.status|status_badge }}">{{ inc.get_status_display }}</span></td>
+        <td>{{ inc.title }}</td>
+        <td>{{ inc.occurrences }}</td>
+        <td class="muted">{{ inc.project.name }}</td>
+        <td>{% if inc.remediation_pr %}<a class="link" href="{{ inc.remediation_pr.get_absolute_url }}">PR #{{ inc.remediation_pr.number }}</a>{% else %}<span class="faint">—</span>{% endif %}</td>
+        <td class="muted nowrap">{{ inc.created_at|timesince }} ago</td>
+      </tr>
+      {% empty %}
+      <tr><td colspan="8"><div class="empty"><div class="big">✓</div>No incidents. Production is healthy.</div></td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

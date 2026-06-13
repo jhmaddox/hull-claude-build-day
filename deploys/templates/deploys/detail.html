@@ -1,0 +1,61 @@
+{% extends "base.html" %}
+{% load helm_extras %}
+{% block title %}Deployment #{{ deployment.pk }}{% endblock %}
+{% block crumbs %}
+  <a class="link" href="/deploys/">Deployments</a>
+  <span class="muted">/ #{{ deployment.pk }}</span>
+{% endblock %}
+{% block actions %}
+  {% if deployment.status == 'live' or deployment.status == 'building' %}
+  <form method="post" action="/deploys/{{ deployment.pk }}/stop/" style="display:inline;">
+    {% csrf_token %}<button class="btn btn-danger" type="submit">Stop</button>
+  </form>
+  {% endif %}
+  <form method="post" action="/deploys/{{ deployment.pk }}/restart/" style="display:inline;">
+    {% csrf_token %}<button class="btn" type="submit">Restart</button>
+  </form>
+{% endblock %}
+
+{% block content %}
+<div class="row between mb-16">
+  <div>
+    <div class="title-xl">{{ deployment.environment.project.name }} / {{ deployment.environment.name }}</div>
+    <div class="muted mono small">{{ deployment.commit_sha|slice:":12"|default:"—" }}{% if deployment.commit_message %} · {{ deployment.commit_message }}{% endif %}</div>
+  </div>
+  <div hx-get="/deploys/{{ deployment.pk }}/status/" hx-trigger="every 3s" hx-swap="innerHTML">
+    {% include "deploys/_status.html" %}
+  </div>
+</div>
+
+<div class="grid grid-4 mb-16">
+  <div class="card stat"><div class="label">Status</div><div class="value">{{ deployment.get_status_display }}</div></div>
+  <div class="card stat"><div class="label">Health</div><div class="value {% if deployment.health == 'healthy' %}success{% elif deployment.health == 'unhealthy' %}danger{% endif %}">{{ deployment.get_health_display }}</div></div>
+  <div class="card stat"><div class="label">Port</div><div class="value mono">{{ deployment.port|default:"—" }}</div></div>
+  <div class="card stat"><div class="label">Created</div><div class="value" style="font-size:16px;">{{ deployment.created_at|timesince }} ago</div></div>
+</div>
+
+{% if deployment.status == 'live' %}
+<div class="card mb-16 row between">
+  <div><strong>Public URL</strong> <span class="muted mono small">{{ deployment.public_url }}</span></div>
+  <a class="btn btn-success" href="{{ deployment.public_url }}" target="_blank">Open ↗</a>
+</div>
+{% endif %}
+
+{% if deployment.error %}
+<div class="card mb-16" style="border-color: rgba(248,113,113,.35);">
+  <div class="card-head"><h2 style="color:var(--danger)">Error</h2></div>
+  <pre class="logs l-error">{{ deployment.error }}</pre>
+</div>
+{% endif %}
+
+<div class="card pad-0 mb-16">
+  <div class="card-head" style="padding:16px 18px 0;">
+    <h2>Build log</h2>
+    {% if deployment.log_path %}<a class="link small" href="/obs/?deployment={{ deployment.pk }}">Runtime logs →</a>{% endif %}
+  </div>
+  <div style="padding:0 18px 18px;">
+    <pre class="logs">{{ deployment.build_log|default:"(no build output)" }}</pre>
+    {% if deployment.log_path %}<div class="muted tiny mt-8 mono">log file: {{ deployment.log_path }}</div>{% endif %}
+  </div>
+</div>
+{% endblock %}

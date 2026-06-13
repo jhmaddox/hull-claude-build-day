@@ -1,0 +1,5 @@
+# Local all-in-one dev run (e.g. `honcho -f deploy/Procfile.dev start`).
+# Temporal + worker are optional — Helm runs on the threaded fallback by default.
+web: python manage.py runserver 0.0.0.0:8000
+temporal: temporal server start-dev --ui-port 8233
+worker: HELM_USE_TEMPORAL=1 python manage.py run_worker

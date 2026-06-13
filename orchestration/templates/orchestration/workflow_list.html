@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+{% load helm_extras %}
+{% block title %}Orchestration{% endblock %}
+{% block crumbs %}<span class="muted">Orchestration</span>{% endblock %}
+
+{% block content %}
+<div class="row between mb-16">
+  <div>
+    <div class="title-xl">Orchestration</div>
+    <div class="muted">Durable workflows — imports, deploys, CI, and autonomous remediations. {{ running_count }} running.</div>
+  </div>
+  <span class="pill pill-live"><span class="dot dot-live"></span> live</span>
+</div>
+
+<div class="card pad-0"
+     id="wf-table"
+     hx-get="/orchestration/table/"
+     hx-trigger="every 2s"
+     hx-swap="innerHTML">
+  {% include "orchestration/_workflow_table.html" %}
+</div>
+{% endblock %}

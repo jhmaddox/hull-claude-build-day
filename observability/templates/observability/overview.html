@@ -1,0 +1,71 @@
+{% extends "base.html" %}
+{% load helm_extras %}
+{% block title %}Observability{% endblock %}
+{% block crumbs %}<span class="muted">Observability</span>{% endblock %}
+
+{% block content %}
+<div class="row between mb-16">
+  <div>
+    <div class="title-xl">Observability</div>
+    <div class="muted">Live telemetry from every running deployment — requests, errors, and logs.</div>
+  </div>
+  <a class="btn" href="/obs/incidents/">⚠ Incidents</a>
+</div>
+
+{% if open_incidents %}
+<div class="card pad-0 mb-16" style="border-color: rgba(248,113,113,.35);">
+  <div class="card-head" style="padding:16px 18px 0;"><h2 style="color:var(--danger)">⚠ Active incidents</h2><a class="link small" href="/obs/incidents/">View all →</a></div>
+  <div class="list">
+    {% for inc in open_incidents %}
+    <a class="list-row" href="{{ inc.get_absolute_url }}">
+      <span class="badge {{ inc.severity|status_badge }}">{{ inc.get_severity_display }}</span>
+      <div class="grow"><strong>INC-{{ inc.number }}</strong> {{ inc.title }}
+        <div class="muted small">{{ inc.project.name }}</div></div>
+      <span class="badge {{ inc.status|status_badge }}">{{ inc.get_status_display }}</span>
+    </a>
+    {% endfor %}
+  </div>
+</div>
+{% endif %}
+
+<div class="grid grid-auto">
+  {% for c in cards %}
+  <div class="card">
+    <div class="row between mb-8">
+      <div>
+        <strong>{{ c.dep.environment.project.name }}</strong>
+        <span class="muted">/ {{ c.dep.environment.name }}</span>
+      </div>
+      <span class="pill pill-live"><span class="dot dot-live"></span> live</span>
+    </div>
+    <div class="muted small mono mb-16">{{ c.dep.commit_sha|slice:":8" }} · :{{ c.dep.port }} · {{ c.dep.get_health_display }}</div>
+
+    <div class="grid grid-2 mb-8">
+      <div>
+        <div class="label muted small">REQUESTS</div>
+        <div class="value" style="font-size:22px;font-weight:700;">{{ c.requests }}</div>
+        <div class="mono" style="color:var(--accent);font-size:16px;line-height:1;">{{ c.req_spark }}</div>
+      </div>
+      <div>
+        <div class="label muted small">ERRORS (5xx)</div>
+        <div class="value {% if c.errors %}danger{% endif %}" style="font-size:22px;font-weight:700;">{{ c.errors }}</div>
+        <div class="mono" style="color:var(--danger);font-size:16px;line-height:1;">{{ c.err_spark }}</div>
+      </div>
+    </div>
+
+    <div class="divider"></div>
+    <div class="label muted small mb-8">RECENT ERRORS</div>
+    {% if c.recent_errors %}
+    <div class="logs" style="max-height:140px;">{% for l in c.recent_errors %}<div class="l-error">{{ l.message }}</div>{% endfor %}</div>
+    {% else %}
+    <div class="muted small">No errors. All green.</div>
+    {% endif %}
+    <div class="mt-8">
+      <a class="btn btn-sm btn-ghost" href="/obs/deployment/{{ c.dep.pk }}/logs/">View logs →</a>
+    </div>
+  </div>
+  {% empty %}
+  <div class="empty"><div class="big">📈</div>No live deployments to observe yet.</div>
+  {% endfor %}
+</div>
+{% endblock %}

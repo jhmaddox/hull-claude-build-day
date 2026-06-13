@@ -1,0 +1,57 @@
+{% extends "store/base.html" %}
+{% block title %}Your cart — PocketShop{% endblock %}
+{% block content %}
+<div class="section-head"><h2>Your cart</h2></div>
+
+{% if lines %}
+<div class="checkout-layout">
+  <form class="panel" method="post" action="{% url 'store:cart' %}">
+    {% csrf_token %}
+    <table class="cart-table">
+      <thead>
+        <tr><th>Item</th><th>Price</th><th>Qty</th><th>Total</th><th></th></tr>
+      </thead>
+      <tbody>
+        {% for line in lines %}
+        <tr>
+          <td>
+            <div class="cart-item">
+              <div class="cart-thumb" style="background: linear-gradient(135deg, {{ line.product.accent }}22, {{ line.product.accent }}55);">{{ line.product.emoji }}</div>
+              <div>
+                <div><a href="{% url 'store:product' line.product.slug %}">{{ line.product.name }}</a></div>
+                <div class="card-tagline">{{ line.product.tagline }}</div>
+              </div>
+            </div>
+          </td>
+          <td>{{ line.product.price_display }}</td>
+          <td><input class="qty-input" type="number" min="0" name="qty_{{ line.product.id }}" value="{{ line.quantity }}"></td>
+          <td>${{ line.line_total }}</td>
+          <td><button class="linkbtn" type="submit" name="remove" value="{{ line.product.id }}">Remove</button></td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    <div style="padding: 14px 18px; border-top: 1px solid var(--line);">
+      <button class="btn btn-ghost btn-sm" type="submit">Update cart</button>
+    </div>
+  </form>
+
+  <div class="panel summary">
+    <h3>Summary</h3>
+    <div class="summary-row"><span>Subtotal</span><span>${{ subtotal }}</span></div>
+    <div class="summary-row"><span>Shipping</span><span>Free</span></div>
+    <div class="summary-row total"><span>Estimated total</span><span>${{ subtotal }}</span></div>
+    <div style="margin-top: 16px;">
+      <a class="btn btn-block btn-lg" href="{% url 'store:checkout' %}">Checkout</a>
+    </div>
+  </div>
+</div>
+{% else %}
+<div class="empty panel">
+  <div class="big">🛒</div>
+  <h3>Your cart is empty</h3>
+  <p>Browse the shop and add a few small good things.</p>
+  <a class="btn" href="{% url 'store:home' %}">Start shopping</a>
+</div>
+{% endif %}
+{% endblock %}

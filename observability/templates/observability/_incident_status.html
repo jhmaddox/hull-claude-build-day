@@ -1,0 +1,66 @@
+{% load helm_extras %}
+<div class="card">
+  <div class="card-head"><h2>Status</h2>
+    <span class="badge {{ incident.status|status_badge }}">{{ incident.get_status_display }}</span>
+  </div>
+  <div class="row gap-6 wrap small">
+    <span class="badge {% if incident.status != 'firing' %}badge-success{% else %}badge-danger{% endif %}">① Firing</span>
+    <span class="faint">→</span>
+    <span class="badge {% if incident.status == 'remediating' or incident.status == 'resolved' %}badge-success{% elif incident.status == 'acknowledged' %}badge-warn{% else %}badge-neutral{% endif %}">② Remediating</span>
+    <span class="faint">→</span>
+    <span class="badge {% if incident.status == 'resolved' %}badge-success{% else %}badge-neutral{% endif %}">③ Resolved</span>
+  </div>
+  {% if incident.status == 'resolved' %}
+  <div class="mt-8" style="color:var(--success);font-weight:600;">✓ Resolved autonomously {{ incident.resolved_at|timesince }} ago</div>
+  {% elif is_remediating %}
+  <div class="mt-8 row gap-8"><span class="spinner"></span> <span class="muted">Claude SRE agent is working…</span></div>
+  {% endif %}
+</div>
+
+{% if remediation_run %}
+<div class="card">
+  <div class="card-head"><h2>Remediation agent</h2>
+    <span class="badge {{ remediation_run.status|status_badge }}">{{ remediation_run.get_status_display }}</span>
+  </div>
+  <div class="row between">
+    <div class="grow"><a class="link" href="/agents/{{ remediation_run.pk }}/">{{ remediation_run.title }}</a>
+      <div class="muted small">{{ remediation_run.get_kind_display }} · {{ remediation_run.created_at|timesince }} ago</div></div>
+  </div>
+  {% if remediation_run.pull_request %}
+  <div class="divider"></div>
+  <div class="row between">
+    <div><a class="link" href="{{ remediation_run.pull_request.get_absolute_url }}">PR #{{ remediation_run.pull_request.number }}</a>
+      <div class="muted small">{{ remediation_run.pull_request.title }}</div></div>
+    <span class="badge {{ remediation_run.pull_request.ci_status|status_badge }}">CI: {{ remediation_run.pull_request.get_ci_status_display }}</span>
+  </div>
+  {% endif %}
+</div>
+{% endif %}
+
+{% if incident.remediation_pr %}
+<div class="card" style="border-color: rgba(52,211,153,.35);">
+  <div class="card-head"><h2 style="color:var(--success)">Fix shipped</h2></div>
+  <a class="link" href="{{ incident.remediation_pr.get_absolute_url }}">PR #{{ incident.remediation_pr.number }} — {{ incident.remediation_pr.title }}</a>
+  <div class="muted small">merged · {{ incident.remediation_pr.get_status_display }}</div>
+</div>
+{% endif %}
+
+<div class="card pad-0">
+  <div class="card-head" style="padding:16px 18px 0;"><h2>Timeline</h2><span class="pill pill-live"><span class="dot dot-live"></span> live</span></div>
+  <div style="padding:6px 18px 14px;">
+    <div class="feed">
+      {% for e in events %}
+      <div class="feed-item">
+        <div class="feed-ico {{ e.level }}">{{ e.icon|feed_icon }}</div>
+        <div class="feed-body grow">
+          <div><strong>{{ e.actor }}</strong> {{ e.verb }}
+            {% if e.url %}<a class="link small" href="{{ e.url }}">↗</a>{% endif %}</div>
+          <div class="feed-time">{{ e.ts|timesince }} ago</div>
+        </div>
+      </div>
+      {% empty %}
+      <div class="empty small">No timeline events yet.</div>
+      {% endfor %}
+    </div>
+  </div>
+</div>

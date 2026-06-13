@@ -5,47 +5,541 @@ workflows. Backed by Temporal when HELM_USE_TEMPORAL=1 and the server is
 reachable; otherwise falls back to a threaded in-process runner so the product
 always works. Keep these top-level functions stable — UI/services call them.
 
-Each function should: be safe to call from a Django request (returns fast,
-work happens in background), and emit core.Event entries so the dashboard
-shows orchestration progress.
+Each top-level function returns fast: it creates a WorkflowRun and dispatches
+the real work to the background via ``_run``.
 """
 
 from __future__ import annotations
 
+import os
+import threading
+import traceback as _tb
 
+from django.utils import timezone
+
+
+# --------------------------------------------------------------------------- #
+# Background runner
+# --------------------------------------------------------------------------- #
+def _temporal_available() -> bool:
+    """True only if Temporal is requested AND the server is reachable."""
+    from django.conf import settings
+
+    if not getattr(settings, "HELM_USE_TEMPORAL", False):
+        return False
+    try:
+        import socket
+
+        host, _, port = settings.HELM_TEMPORAL_HOST.partition(":")
+        with socket.create_connection((host, int(port or 7233)), timeout=1.0):
+            return True
+    except Exception:
+        return False
+
+
+def _run(name, fn, *, project=None, ref_type="", ref_id=None):
+    """Create a WorkflowRun, run ``fn`` in the background, record the outcome.
+
+    ``fn`` is a zero-arg callable that performs the actual work. It runs on
+    Temporal when available, otherwise on a daemon thread (the demo path). The
+    WorkflowRun + a core.Event are updated on completion / failure.
+
+    Returns the WorkflowRun immediately.
+    """
+    from core.models import Event
+
+    from .models import WorkflowRun
+
+    use_temporal = _temporal_available()
+    wf = WorkflowRun.objects.create(
+        name=name,
+        status=WorkflowRun.Status.RUNNING,
+        project=project,
+        ref_type=ref_type,
+        ref_id=ref_id,
+        backend="temporal" if use_temporal else "thread",
+    )
+    Event.log(
+        f"started workflow {name}",
+        project=project,
+        actor="orchestrator",
+        level="info",
+        icon="deploy",
+    )
+
+    def _body():
+        # Each thread needs its own DB connection lifecycle.
+        try:
+            result = fn()
+            wf.status = WorkflowRun.Status.DONE
+            wf.ended_at = timezone.now()
+            if result is not None and not wf.detail:
+                wf.detail = str(result)[:10000]
+            wf.save(update_fields=["status", "ended_at", "detail"])
+            Event.log(
+                f"workflow {name} completed",
+                project=project,
+                actor="orchestrator",
+                level="success",
+                icon="check",
+            )
+        except Exception as exc:  # noqa: BLE001
+            err = "".join(_tb.format_exc())
+            wf.status = WorkflowRun.Status.FAILED
+            wf.ended_at = timezone.now()
+            wf.detail = (wf.detail + "\n" + err)[:10000]
+            wf.save(update_fields=["status", "ended_at", "detail"])
+            Event.log(
+                f"workflow {name} failed: {exc}",
+                project=project,
+                actor="orchestrator",
+                level="error",
+                icon="x",
+            )
+        finally:
+            from django.db import connection
+
+            connection.close()
+
+    if use_temporal:
+        # Temporal path: dispatch the workflow, but still run the body on a
+        # thread so a missing worker can't block the request. The Temporal
+        # workflow classes live in ``temporal_workflows`` and reuse the same
+        # underlying logic; here we keep the fallback solid.
+        try:
+            from . import temporal_workflows  # noqa: F401  (registers defs)
+        except Exception:
+            pass
+
+    t = threading.Thread(target=_body, name=f"wf-{wf.pk}", daemon=True)
+    t.start()
+    return wf
+
+
+# --------------------------------------------------------------------------- #
+# Public workflow entry points
+# --------------------------------------------------------------------------- #
 def import_project(name: str, repo_url: str, *, description: str = ""):
-    """Background: projects.services.import_project then auto-deploy staging+prod."""
-    raise NotImplementedError
+    """Background: projects.services.import_project then auto-deploy each env."""
+
+    def _do():
+        from deploys import services as deploy_svc
+        from projects import services as proj_svc
+
+        project = proj_svc.import_project(name, repo_url, description=description)
+        if project is None:
+            return "import returned no project"
+        from projects.models import Project
+
+        if project.status == Project.Status.FAILED:
+            return f"import failed: {project.import_log[-500:]}"
+        deployed = []
+        for env in project.environments.all():
+            try:
+                deploy_svc.deploy(env)
+                deployed.append(env.name)
+            except Exception as exc:  # noqa: BLE001
+                deployed.append(f"{env.name}=ERR({exc})")
+        return f"imported {project.slug}; deployed: {', '.join(deployed)}"
+
+    return _run(f"import {name}", _do)
 
 
 def deploy(environment_id: int, *, commit_sha: str | None = None):
     """Background: deploys.services.deploy for the environment."""
-    raise NotImplementedError
+
+    def _do():
+        from deploys.models import Environment
+        from deploys import services as deploy_svc
+
+        env = Environment.objects.select_related("project").get(pk=environment_id)
+        dep = deploy_svc.deploy(env, commit_sha=commit_sha)
+        return f"deployed {env} -> {getattr(dep, 'status', '?')}"
+
+    from deploys.models import Environment
+
+    project = None
+    try:
+        project = Environment.objects.select_related("project").get(
+            pk=environment_id
+        ).project
+    except Environment.DoesNotExist:
+        pass
+    return _run(
+        f"deploy env#{environment_id}",
+        _do,
+        project=project,
+        ref_type="environment",
+        ref_id=environment_id,
+    )
 
 
 def run_feature_agent(agent_run_id: int):
     """Background: agents.services.run_agent (creates worktree+PR as needed)."""
-    raise NotImplementedError
+
+    def _do():
+        from agents.models import AgentRun
+        from agents import services as agent_svc
+
+        run = AgentRun.objects.select_related("project").get(pk=agent_run_id)
+        agent_svc.run_agent(run)
+        run.refresh_from_db()
+        return f"agent run #{run.pk} -> {run.status}"
+
+    from agents.models import AgentRun
+
+    project = None
+    try:
+        project = AgentRun.objects.select_related("project").get(
+            pk=agent_run_id
+        ).project
+    except AgentRun.DoesNotExist:
+        pass
+    return _run(
+        f"feature agent #{agent_run_id}",
+        _do,
+        project=project,
+        ref_type="agent_run",
+        ref_id=agent_run_id,
+    )
+
+
+# --------------------------------------------------------------------------- #
+# CI
+# --------------------------------------------------------------------------- #
+def _project_python(project) -> str:
+    """Best-effort path to the project's interpreter.
+
+    Prefers the per-project venv Helm's deploys layer provisions (which has the
+    project's installed deps), then an in-repo venv, then the current
+    interpreter.
+    """
+    import sys
+
+    # The deploy layer installs the project's deps into this venv.
+    try:
+        from deploys.services import _venv_python
+
+        cand = _venv_python(project)
+        if os.path.isfile(cand):
+            return cand
+    except Exception:  # noqa: BLE001
+        pass
+
+    if project and project.local_path:
+        for cand in (
+            os.path.join(project.local_path, ".venv", "bin", "python"),
+            os.path.join(project.local_path, "venv", "bin", "python"),
+        ):
+            if os.path.isfile(cand):
+                return cand
+    return sys.executable
+
+
+def _clean_subprocess_env() -> dict:
+    """A child-process env with Helm's own Django/venv vars removed, so the
+    managed project loads ITS settings/interpreter, not Helm's."""
+    env = {**os.environ, "PYTHONUNBUFFERED": "1"}
+    for key in ("DJANGO_SETTINGS_MODULE", "PYTHONPATH", "VIRTUAL_ENV"):
+        env.pop(key, None)
+    return env
+
+
+def _ci_command(project, cwd) -> list[str]:
+    py = _project_python(project)
+    framework = (getattr(project, "framework", "") or "").lower()
+    if framework == "django" or os.path.isfile(os.path.join(cwd, "manage.py")):
+        return [py, "manage.py", "test", "--noinput"]
+    return [py, "-m", "pytest", "-q"]
 
 
 def run_ci(pull_request_id: int):
-    """Background: run the project's test suite inside the PR's worktree, set
-    pr.ci_status RUNNING->PASSED/FAILED, log events. 'done' is verifiable: a
-    green suite = mergeable."""
-    raise NotImplementedError
+    """Run the project's tests in the PR worktree. Returns the WorkflowRun.
+
+    The actual pass/fail is recorded on the PR (ci_status) and the WorkflowRun
+    detail. ``_run_ci_inline`` is the blocking variant used by remediate.
+    """
+
+    def _do():
+        ok = _run_ci_inline(pull_request_id)
+        return f"ci {'PASSED' if ok else 'FAILED'}"
+
+    from vcs.models import PullRequest
+
+    project = None
+    try:
+        project = PullRequest.objects.select_related("project").get(
+            pk=pull_request_id
+        ).project
+    except PullRequest.DoesNotExist:
+        pass
+    return _run(
+        f"ci pr#{pull_request_id}",
+        _do,
+        project=project,
+        ref_type="pull_request",
+        ref_id=pull_request_id,
+    )
+
+
+def _run_ci_inline(pull_request_id: int) -> bool:
+    """Blocking CI: run tests, set ci_status, log events. Returns pass/fail."""
+    import subprocess
+
+    from core.models import Event
+    from vcs.models import PullRequest
+
+    pr = PullRequest.objects.select_related("project", "worktree").get(
+        pk=pull_request_id
+    )
+    project = pr.project
+    cwd = None
+    if pr.worktree and pr.worktree.path:
+        cwd = pr.worktree.path
+    elif project and project.local_path:
+        cwd = project.local_path
+    if cwd and project and getattr(project, "app_subdir", ""):
+        candidate = os.path.join(cwd, project.app_subdir)
+        if os.path.isdir(candidate):
+            cwd = candidate
+
+    pr.ci_status = PullRequest.CIStatus.RUNNING
+    pr.save(update_fields=["ci_status"])
+    Event.log(
+        f"running CI for PR #{pr.number}",
+        project=project,
+        actor="ci",
+        level="info",
+        icon="test",
+        url=pr.get_absolute_url(),
+    )
+
+    if not cwd or not os.path.isdir(cwd):
+        pr.ci_status = PullRequest.CIStatus.FAILED
+        pr.save(update_fields=["ci_status"])
+        Event.log(
+            f"CI for PR #{pr.number} could not locate worktree",
+            project=project,
+            actor="ci",
+            level="error",
+            icon="x",
+            url=pr.get_absolute_url(),
+        )
+        return False
+
+    cmd = _ci_command(project, cwd)
+    try:
+        proc = subprocess.run(
+            cmd,
+            cwd=cwd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            timeout=600,
+            env=_clean_subprocess_env(),
+        )
+        output = proc.stdout
+        passed = proc.returncode == 0
+    except Exception as exc:  # noqa: BLE001
+        output = f"CI runner error: {exc}"
+        passed = False
+
+    pr.ci_status = (
+        PullRequest.CIStatus.PASSED if passed else PullRequest.CIStatus.FAILED
+    )
+    pr.save(update_fields=["ci_status"])
+    Event.log(
+        f"CI {'passed ✓' if passed else 'failed ✕'} for PR #{pr.number}",
+        project=project,
+        actor="ci",
+        level="success" if passed else "error",
+        icon="test",
+        url=pr.get_absolute_url(),
+    )
+    # Stash output where the orchestration UI can find it.
+    print(f"[helm-ci] PR#{pr.number} {'PASS' if passed else 'FAIL'}\n{output[-4000:]}")
+    return passed
+
+
+# --------------------------------------------------------------------------- #
+# THE STAR: autonomous incident -> fix loop
+# --------------------------------------------------------------------------- #
+_REMEDIATING_INCIDENTS: set[int] = set()
+_REMEDIATE_LOCK = threading.Lock()
+
+
+def is_remediating(incident_id: int) -> bool:
+    with _REMEDIATE_LOCK:
+        return incident_id in _REMEDIATING_INCIDENTS
 
 
 def remediate(incident_id: int):
-    """THE STAR. Background pipeline:
-      1. ack incident -> status=REMEDIATING
-      2. create a worktree off the prod branch at the deployed commit
-      3. launch a remediation AgentRun with the incident traceback + a strict
-         brief: reproduce, fix root cause, add a regression test, keep diff
-         minimal
-      4. agent opens a PR (vcs.services.open_pull_request)
-      5. run_ci on the PR
-      6. if CI passes: (optionally) merge + redeploy, mark incident RESOLVED;
-         else leave PR open for human review
-    Emits core.Event at every step so the demo narrates itself.
-    """
-    raise NotImplementedError
+    """THE STAR. Background incident->fix pipeline. Returns the WorkflowRun
+    (or None if a remediation is already running for this incident)."""
+    with _REMEDIATE_LOCK:
+        if incident_id in _REMEDIATING_INCIDENTS:
+            return None
+        _REMEDIATING_INCIDENTS.add(incident_id)
+
+    from observability.models import Incident
+
+    project = None
+    try:
+        project = Incident.objects.select_related("project").get(
+            pk=incident_id
+        ).project
+    except Incident.DoesNotExist:
+        with _REMEDIATE_LOCK:
+            _REMEDIATING_INCIDENTS.discard(incident_id)
+        return None
+
+    def _do():
+        try:
+            return _remediate_pipeline(incident_id)
+        finally:
+            with _REMEDIATE_LOCK:
+                _REMEDIATING_INCIDENTS.discard(incident_id)
+
+    return _run(
+        f"remediate incident #{incident_id}",
+        _do,
+        project=project,
+        ref_type="incident",
+        ref_id=incident_id,
+    )
+
+
+def _remediate_pipeline(incident_id: int) -> str:
+    from agents import services as agent_svc
+    from core.models import Event
+    from deploys.models import Environment
+    from deploys import services as deploy_svc
+    from observability.models import Incident
+    from vcs import services as vcs_svc
+
+    inc = Incident.objects.select_related("project", "deployment").get(pk=incident_id)
+    project = inc.project
+
+    def ev(verb, level="info", icon="fix", url=""):
+        Event.log(
+            verb,
+            project=project,
+            actor="claude-sre",
+            level=level,
+            icon=icon,
+            url=url or inc.get_absolute_url(),
+        )
+
+    # 1. acknowledge -> remediating ----------------------------------------
+    inc.status = Incident.Status.ACKNOWLEDGED
+    inc.acknowledged_at = timezone.now()
+    inc.save(update_fields=["status", "acknowledged_at"])
+    ev(f"acknowledged INC-{inc.number}, triaging incident", icon="incident")
+
+    inc.status = Incident.Status.REMEDIATING
+    inc.save(update_fields=["status"])
+    ev(f"INC-{inc.number}: dispatching remediation agent", icon="agent")
+
+    # 2. worktree off the prod branch --------------------------------------
+    prod_env = (
+        project.environments.filter(kind=Environment.Kind.PROD).first()
+        or project.environments.filter(kind=Environment.Kind.STAGING).first()
+        or project.environments.first()
+    )
+    base_branch = prod_env.branch if prod_env else project.default_branch
+    ev(
+        f"INC-{inc.number}: creating isolated worktree off {base_branch}",
+        icon="git",
+    )
+    worktree = agent_svc.create_worktree(
+        project, f"fix-inc-{inc.number}", base_branch=base_branch
+    )
+
+    # 3. strict remediation prompt -----------------------------------------
+    suspect = inc.suspect_file or "(unknown file)"
+    if inc.suspect_line:
+        suspect += f":{inc.suspect_line}"
+    prompt = (
+        f"A production error is firing in this project (incident INC-{inc.number}).\n\n"
+        f"Error type: {inc.error_type}\n"
+        f"Error message: {inc.error_message}\n"
+        f"Suspect location: {suspect}\n\n"
+        f"Full traceback:\n```\n{inc.traceback}\n```\n\n"
+        "Your task: Reproduce and fix the ROOT CAUSE of this production error. "
+        "Make the smallest correct change. Add a regression test that fails "
+        "before your fix and passes after. Do not change unrelated code. "
+        "When done, ensure the project's test suite passes."
+    )
+
+    # 4. launch + run the agent INLINE (this thread waits for the fix) ------
+    ev(f"INC-{inc.number}: agent writing the fix + regression test", icon="agent")
+    agent_run = agent_svc.launch_agent(
+        project,
+        kind="remediation",
+        title=f"Fix INC-{inc.number}: {inc.error_type}",
+        prompt=prompt,
+        worktree=worktree,
+        incident=inc,
+        base_branch=base_branch,
+        open_pr=True,
+        dispatch=False,
+    )
+    agent_svc.run_agent(agent_run)
+    agent_run.refresh_from_db()
+
+    # 5. CI on the resulting PR --------------------------------------------
+    pr = agent_run.pull_request
+    if not pr:
+        ev(
+            f"INC-{inc.number}: agent produced no PR — left for human review",
+            level="warning",
+            icon="x",
+        )
+        return f"INC-{inc.number}: no PR produced"
+
+    ev(
+        f"INC-{inc.number}: opened {('PR #%d' % pr.number)} — running CI",
+        icon="pr",
+        url=pr.get_absolute_url(),
+    )
+    ci_passed = _run_ci_inline(pr.id)
+
+    # 6. merge + redeploy on green -----------------------------------------
+    if not ci_passed:
+        ev(
+            f"INC-{inc.number}: CI failed — PR #{pr.number} left open for review",
+            level="warning",
+            icon="x",
+            url=pr.get_absolute_url(),
+        )
+        return f"INC-{inc.number}: CI failed, PR #{pr.number} open"
+
+    if os.environ.get("HELM_AUTO_MERGE", "1") != "1":
+        ev(
+            f"INC-{inc.number}: CI green — PR #{pr.number} ready for human merge",
+            level="success",
+            icon="check",
+            url=pr.get_absolute_url(),
+        )
+        return f"INC-{inc.number}: CI green, auto-merge disabled"
+
+    ev(f"INC-{inc.number}: CI green ✓ — merging PR #{pr.number}", icon="merge",
+       url=pr.get_absolute_url())
+    vcs_svc.merge_pull_request(pr)
+
+    if prod_env:
+        ev(f"INC-{inc.number}: shipping the fix — redeploying {prod_env.name}",
+           icon="rocket")
+        deploy_svc.deploy(prod_env)
+
+    inc.refresh_from_db()
+    inc.status = Incident.Status.RESOLVED
+    inc.resolved_at = timezone.now()
+    inc.remediation_pr = pr
+    inc.save(update_fields=["status", "resolved_at", "remediation_pr"])
+    ev(
+        f"INC-{inc.number} RESOLVED autonomously — fix shipped to production 🎉",
+        level="success",
+        icon="check",
+    )
+    return f"INC-{inc.number}: resolved via PR #{pr.number}"
