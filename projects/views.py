@@ -5,7 +5,7 @@ from django.db.models import Prefetch
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 
-from accounts.scoping import org_required
+from accounts.scoping import org_required, visible
 
 from .health import health_verdict
 from .models import Project
@@ -44,7 +44,7 @@ def _scoped_project_qs(request):
     deploy_qs = Deployment.objects.exclude(
         status=Deployment.Status.STOPPED
     ).order_by("-created_at")
-    return Project.objects.for_org(request.org).prefetch_related(
+    return visible(Project, request).prefetch_related(
         Prefetch("environments__deployments", queryset=deploy_qs),
         "environments",
         "incidents",
@@ -177,7 +177,7 @@ def project_detail(request, slug):
         status=Deployment.Status.STOPPED
     ).order_by("-created_at")
     project = get_object_or_404(
-        Project.objects.for_org(request.org).prefetch_related(
+        visible(Project, request).prefetch_related(
             Prefetch("environments__deployments", queryset=deploy_qs),
             "environments",
             "incidents",
@@ -234,7 +234,7 @@ def import_steps_fragment(request, slug):
     page can poll it (~1.5s) and animate pending -> running -> done/failed. When
     no steps are in flight it stops self-polling (the wrapper drops hx-trigger)."""
     project = get_object_or_404(
-        Project.objects.for_org(request.org), slug=slug
+        visible(Project, request), slug=slug
     )
     steps = list(project.import_steps.all())
     return render(
@@ -251,7 +251,7 @@ def import_steps_fragment(request, slug):
 @org_required
 def project_deploy(request, slug, env_pk):
     """POST: trigger a deploy of one environment in the background."""
-    project = get_object_or_404(Project.objects.for_org(request.org), slug=slug)
+    project = get_object_or_404(visible(Project, request), slug=slug)
     env = get_object_or_404(project.environments, pk=env_pk)
 
     from orchestration import service as orch

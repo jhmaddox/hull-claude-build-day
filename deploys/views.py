@@ -8,7 +8,7 @@ from django.urls import reverse
 from django.utils import timezone
 from django.views.decorators.csrf import csrf_exempt
 
-from accounts.scoping import org_required, scoped
+from accounts.scoping import org_required, scoped, visible
 
 from .models import Deployment, Domain, EnvVar, Environment
 
@@ -214,7 +214,7 @@ def host_map(request):
 @org_required
 def deploy_list(request):
     deployments = (
-        scoped(Deployment, request)
+        visible(Deployment, request)
         .select_related("environment", "environment__project")
         .order_by("-created_at")[:100]
     )
@@ -225,7 +225,7 @@ def deploy_list(request):
 def deploy_rows(request):
     """HTMX fragment: just the table rows, for auto-refresh."""
     deployments = (
-        scoped(Deployment, request)
+        visible(Deployment, request)
         .select_related("environment", "environment__project")
         .order_by("-created_at")[:100]
     )
@@ -235,7 +235,7 @@ def deploy_rows(request):
 @org_required
 def deploy_detail(request, pk):
     deployment = get_object_or_404(
-        scoped(Deployment, request).select_related(
+        visible(Deployment, request).select_related(
             "environment", "environment__project"
         ),
         pk=pk,
@@ -252,7 +252,7 @@ def deploy_detail_status(request, pk):
 
 @org_required
 def deploy_stop(request, pk):
-    deployment = get_object_or_404(scoped(Deployment, request), pk=pk)
+    deployment = get_object_or_404(visible(Deployment, request), pk=pk)
     from . import services
 
     services.stop(deployment)
@@ -262,7 +262,7 @@ def deploy_stop(request, pk):
 
 @org_required
 def deploy_restart(request, pk):
-    deployment = get_object_or_404(scoped(Deployment, request), pk=pk)
+    deployment = get_object_or_404(visible(Deployment, request), pk=pk)
     from . import services
 
     threading.Thread(target=services.restart, args=(deployment,), daemon=True).start()
@@ -275,7 +275,7 @@ def deploy_restart(request, pk):
 # ---------------------------------------------------------------------------
 def _get_env(request, env_pk):
     return get_object_or_404(
-        Environment.objects.for_org(request.org).select_related("project"),
+        visible(Environment, request).select_related("project"),
         pk=env_pk,
     )
 
@@ -295,7 +295,7 @@ def env_history(request, env_pk):
 def deploy_rollback(request, env_pk, pk):
     environment = _get_env(request, env_pk)
     target = get_object_or_404(
-        scoped(Deployment, request), pk=pk, environment=environment
+        visible(Deployment, request), pk=pk, environment=environment
     )
     from . import services
 
