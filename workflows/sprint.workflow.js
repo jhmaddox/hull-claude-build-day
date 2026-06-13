@@ -93,7 +93,68 @@ const FIX_OPS = {
     })),
 }
 
-const SPRINTS = { '1': WIDE, wide: WIDE, 'fix-ops': FIX_OPS }
+// Sprint 2: make deployments REAL (compose + custom domains, no /d/<pk>/ paths)
+// on the same host as the control plane, plus manual create-flows + dashboard scoping.
+const SPRINT2 = {
+  goal: 'Make deployments real: Docker-Compose by default + a unique custom DOMAIN per environment (host-based routing + Caddy on-demand TLS), retiring the /d/<pk>/ path as the primary URL. Deployments run on the control-plane host (the EC2 box). Plus manual New-PR and Create-Incident flows and dashboard org-scoping. NEVER break the autonomous incident->fix loop (keep the /d/<pk>/ path proxy + the process runtime fallback working).',
+  qa_rounds: 2,
+  workstreams: [
+    {
+      key: 'deploys', title: 'Real Deployments: Compose + Custom Domains', owns: 'deploys/',
+      pm_focus: 'Every environment deploys as a Docker-Compose stack (when Docker present) and is reachable at a real hostname like <project-slug>-<env>.apps.dev-reservclaims.com with Caddy on-demand TLS — NOT a /d/<pk>/ path. Deploy history, env vars, domain status all visible.',
+      build_brief:
+        'Make deployments real on the SAME host as the control plane:\n' +
+        '1) Default Environment.runtime to COMPOSE when Docker is available (detect `docker` on PATH at deploy time; fall back to PROCESS if absent). Keep PROCESS as a working fallback — the autonomous loop and the existing /d/<pk>/ path proxy MUST keep working.\n' +
+        '2) On a successful deploy, AUTO-PROVISION a Domain for the env: hostname=f"{project.slug}-{environment.name}.apps.dev-reservclaims.com", status=ACTIVE (wildcard *.apps.dev-reservclaims.com already points at the EC2 box). One stable hostname per environment.\n' +
+        '3) Add a HostProxyMiddleware (deploys/middleware.py): if request.get_host() (minus port) matches an ACTIVE Domain, reverse-proxy the request to that deployment process/container port (reuse the existing proxy_to logic) and return; otherwise call get_response (pass through to normal Hull routing). Report the exact MIDDLEWARE settings line for the integrator (must sit just after SecurityMiddleware/Whitenoise, before CommonMiddleware).\n' +
+        '4) Make Environment.public_url return https://<primary active domain>/ when one exists, else the existing /d/<pk>/ path. Update deploy templates/Open links to use it.\n' +
+        '5) Ensure the Caddy on-demand TLS endpoints are correct: /deploys/tls/ask approves a host iff an ACTIVE Domain exists; /deploys/tls/hostmap returns {hostname: "127.0.0.1:<port>"} for live deployments.\n' +
+        'Note: locally these hostnames will not DNS-resolve (wildcard points at EC2) — that is expected; verification happens on the VM. Own ONLY deploys/. Report settings + Caddyfile wiring notes; do not edit settings.py/helm urls/base.html yourself.',
+    },
+    {
+      key: 'vcs', title: 'Manual New-PR flow', owns: 'vcs/',
+      pm_focus: 'A user can open a Pull Request by hand from the UI (pick project + head branch + base), in addition to agent-created PRs.',
+      build_brief:
+        'Add a manual "New PR" UI: a form (project select, head branch, base branch defaulting to default_branch, title, description) that opens a PullRequest from an existing branch WITHOUT requiring an agent worktree. Add a vcs.services.open_pull_request_from_branch(project, head_branch, base_branch, title, description, org) helper (compute the git diff like the existing open_pull_request) and wire a "New PR" button on the PR list. Keep agent-created PRs and existing merge/CI working. Org-scope to request.org. Own ONLY vcs/.',
+    },
+    {
+      key: 'observability', title: 'Manual Create-Incident flow', owns: 'observability/',
+      pm_focus: 'A user can manually declare an incident (title, severity, project, message) that enters the same incident pipeline as auto-detected ones (timeline, on-call routing, optional remediation).',
+      build_brief:
+        'Add a manual "Create incident" UI on /obs/incidents/: form (project, severity, title, message). Create an Incident (status=FIRING, org=request.org) through the SAME path auto-incidents use so the on-call hook (oncall loop on_incident_opened) fires and it shows a timeline — add an observability.services.create_manual_incident(...) helper that reuses next_incident_number + emits the pagerduty Event + calls the oncall hook (do NOT change the Incident schema or the ingest_line/open_or_update_incident contracts the loop uses). Add a "Declare incident" button on the incidents list. Own ONLY observability/.',
+    },
+    {
+      key: 'core', title: 'Dashboard org-scoping + org switcher', owns: 'core/',
+      pm_focus: 'The Mission Control dashboard shows only the current org’s data; an org switcher is in the nav.',
+      build_brief:
+        'Scope the core dashboard queries (projects, deployments, incidents, agent runs, PRs, stats) to request.org via accounts.scoping (Model.objects.for_org(request.org) or scoped(...)); keep the global activity Event feed as-is (Event has no org). Require login on the dashboard (org_required), redirecting anon users to login. Add an org-switcher dropdown to the sidebar/topbar in core (a small included fragment is fine; if base.html must change, report it as a wiring note). Own ONLY core/.',
+    },
+
+    // -- PLANNING-ONLY this sprint: PM every other subcomponent in parallel --
+    { key: 'import-loop', title: 'Agentic Import→Configure→Deploy loop', owns: 'projects/ + orchestration/ + agents/ (future)', pm_only: true,
+      pm_focus: 'THE next-sprint centerpiece: import a GitHub repo -> a Temporal-durable agent inspects the repo, generates a working Dockerfile + docker-compose tuned to it, validates it builds, commits, then deploys. Must be GENERAL across Rails, Django, Node, Go, etc. — not Django-only. Today: dumb git clone + heuristic detect (manage.py/Procfile only). Spec the detection upgrades, the configure-agent prompt + validation loop, the Temporal workflow, and a deploy-failure->agent-fix loop.' },
+    { key: 'agent-chat', title: 'Interactive Agent Chat sessions', owns: 'agents/ (future)', pm_only: true,
+      pm_focus: 'Make launching an agent an interactive CHAT: user sends follow-up messages mid/after a run and the session continues (claude --resume or SDK), streaming live. Today: one-shot headless claude -p with a live log, no follow-ups. Spec the session-continuation model, schema (session id / parent run), and UI.' },
+    { key: 'projects', title: 'Projects (repo mgmt, settings)', owns: 'projects/', pm_only: true,
+      pm_focus: 'Project home as the hub: repo browser, branches, settings, environment management, connected resources. Multi-project UX, per-project config/secrets, danger-zone.' },
+    { key: 'agents', title: 'Agents & the Agent Roster', owns: 'agents/', pm_only: true,
+      pm_focus: 'Agent roster + run history, agent kinds (feature/remediation/ci/review/chore), cost/turn analytics, re-run, cancel, the live console. How agents surface across the product.' },
+    { key: 'orchestration', title: 'Orchestration & Agent-Org UI', owns: 'orchestration/', pm_only: true,
+      pm_focus: 'Surface the Gastown agent org in-product: sprint runs, workflow runs (Temporal-backed), live agent activity, PM/builder/QA hierarchy, the self-building story. Temporal Cloud visibility.' },
+    { key: 'issues', title: 'Issues (Jira)', owns: 'issues/', pm_only: true,
+      pm_focus: 'Jira-grade: boards, epics, sprints, ticket types/states/priorities/assignees/labels, comments, links to PRs/incidents/commits, and crucially THE AGENT BACKLOG — agents file + pick up tickets here. Spec where current impl falls short.' },
+    { key: 'wiki', title: 'Docs / Wiki', owns: 'wiki/', pm_only: true,
+      pm_focus: 'Knowledge vault: spaces, hierarchical pages, search, page history, links to code/PRs/incidents, auto-generated docs (e.g. postmortems land here). Spec gaps.' },
+    { key: 'oncall', title: 'On-call / Incidents v2', owns: 'oncall/', pm_only: true,
+      pm_focus: 'PagerDuty depth: on-call schedule UI + calendar, escalation policies, AUTO escalation tick (background/Temporal), alert routing, paging/notifications, postmortems + action items. Spec what is built vs missing (manual create, auto-tick).' },
+    { key: 'enterprise', title: 'Enterprise (RBAC, Audit, API, Billing, SSO)', owns: 'enterprise/', pm_only: true,
+      pm_focus: 'Enterprise-readiness: RBAC enforcement across the app (by Membership.role), audit log coverage, API keys + a public API, SSO/SAML, billing/usage. Spec the enforcement gaps and a public REST API surface.' },
+    { key: 'accounts', title: 'Accounts & User Management', owns: 'accounts/', pm_only: true,
+      pm_focus: 'Org/user lifecycle: invitations, member management, roles, profile, org settings, SSO-ready auth, onboarding. Spec polish + gaps.' },
+  ],
+}
+
+const SPRINTS = { '1': WIDE, wide: WIDE, 'fix-ops': FIX_OPS, '2': SPRINT2 }
 
 // --------------------------------------------------------------------------- //
 const sprintKey = (args && args.sprint != null) ? String(args.sprint) : '1'
@@ -162,10 +223,17 @@ const plans = {}
 const planned = await parallel(sprint.workstreams.map((w) => () =>
   agent(
     `${ctx}\n\nYou are the PRODUCT MANAGER for the "${w.title}" section (owns: ${w.owns}). ` +
-    `Focus: ${w.pm_focus}\n\nGenerate-and-filter: brainstorm the full feature set, then filter to the ` +
-    `highest-impact MVP achievable THIS sprint. Write docs/prd/${w.key}.md (problem, user stories, ` +
-    `scope-in/scope-out, and a numbered MACHINE-CHECKABLE rubric of pass/fail assertions). Return the ` +
-    `rubric and a concrete ticket list for the builder.`,
+    `Focus: ${w.pm_focus}\n\n` +
+    (w.pm_only
+      ? `This section is PLANNING-ONLY this sprint (no builder will run for it now). First READ the ` +
+        `current code for ${w.owns} and the existing docs/prd/${w.key}.md if present to ground yourself ` +
+        `in what already exists. Then produce a THOROUGH, well-prioritized PRD capturing the full vision ` +
+        `(per docs/ROADMAP.md), an honest "current state vs target" gap list, and a prioritized backlog ` +
+        `of build tickets for a FUTURE sprint. Be comprehensive, not MVP-only.`
+      : `Generate-and-filter: brainstorm the full feature set, then filter to the highest-impact MVP ` +
+        `achievable THIS sprint (a builder will implement your tickets immediately).`) +
+    `\n\nWrite docs/prd/${w.key}.md (problem, user stories, current-state-vs-target, scope, and a ` +
+    `numbered MACHINE-CHECKABLE rubric of pass/fail assertions). Return the rubric and a concrete ticket list.`,
     { label: `pm:${w.key}`, phase: 'Plan', schema: PM_SCHEMA },
   ).then((r) => { if (r) plans[w.key] = r; return r })
 ))
@@ -212,13 +280,17 @@ async function buildAndQA(w) {
 
 phase('Build')
 const results = []
+// pm_only workstreams produced a PRD/backlog in the Plan phase and are NOT built this sprint.
+const toBuild = sprint.workstreams.filter((w) => !w.pm_only)
+const pmOnly = sprint.workstreams.filter((w) => w.pm_only)
+if (pmOnly.length) log(`planning-only this sprint (PRD + backlog): ${pmOnly.map((w) => w.key).join(', ')}`)
 // Sequential cross-cutting foundation first (e.g. tenancy), in declared order.
-for (const w of sprint.workstreams.filter((w) => w.sequential)) {
+for (const w of toBuild.filter((w) => w.sequential)) {
   log(`sequential build: ${w.key}`)
   results.push(await buildAndQA(w))
 }
 // Then everything else in parallel.
-const parallelWS = sprint.workstreams.filter((w) => !w.sequential)
+const parallelWS = toBuild.filter((w) => !w.sequential)
 if (parallelWS.length) {
   const r = await parallel(parallelWS.map((w) => () => buildAndQA(w)))
   results.push(...r.filter(Boolean))
