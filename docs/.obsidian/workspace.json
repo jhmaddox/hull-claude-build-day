@@ -185,6 +185,8 @@
   },
   "active": "b6fd1525e4fe3474",
   "lastOpenFiles": [
+    "TARGET_DEMO.md",
+    "backlog/design.md",
     "backlog/sample-app.md",
     "backlog/observability.md",
     "backlog/orchestration.md",

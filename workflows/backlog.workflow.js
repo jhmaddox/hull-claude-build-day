@@ -50,13 +50,16 @@ const SECTION_OWNS = {
   projects: 'projects/',
   core: 'core/',
   'sample-app': 'sample_apps/',
+  // Global design system ONLY (palette + shared components). Must not edit
+  // individual apps' templates — the palette lives in CSS variables.
+  design: 'static/css/helm.css + templates/base.html',
 }
 
 const ALL = Object.keys(SECTION_OWNS)
 // Sprint 3 default target (hardcoded so a dropped `args` can't silently run ALL
 // sections). Override via args.sections. These are exactly the sections we
 // seeded docs/backlog/*.md for this sprint.
-const DEFAULT_SECTIONS = ['projects', 'sample-app', 'issues', 'orchestration', 'observability']
+const DEFAULT_SECTIONS = ['projects', 'sample-app', 'issues', 'orchestration', 'observability', 'design']
 const sections = (args && Array.isArray(args.sections) && args.sections.length) ? args.sections : DEFAULT_SECTIONS
 const MAX = (args && args.maxPerSection) || 6
 const QA_ROUNDS = (args && args.qa_rounds) || 2
