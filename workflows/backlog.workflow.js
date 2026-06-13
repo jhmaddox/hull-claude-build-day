@@ -49,12 +49,17 @@ const SECTION_OWNS = {
   accounts: 'accounts/',
   projects: 'projects/',
   core: 'core/',
+  'sample-app': 'sample_apps/',
 }
 
 const ALL = Object.keys(SECTION_OWNS)
-const sections = (args && Array.isArray(args.sections) && args.sections.length) ? args.sections : ALL
-const MAX = (args && args.maxPerSection) || 2
-const QA_ROUNDS = (args && args.qa_rounds) || 1
+// Sprint 3 default target (hardcoded so a dropped `args` can't silently run ALL
+// sections). Override via args.sections. These are exactly the sections we
+// seeded docs/backlog/*.md for this sprint.
+const DEFAULT_SECTIONS = ['projects', 'sample-app', 'issues', 'orchestration', 'observability']
+const sections = (args && Array.isArray(args.sections) && args.sections.length) ? args.sections : DEFAULT_SECTIONS
+const MAX = (args && args.maxPerSection) || 6
+const QA_ROUNDS = (args && args.qa_rounds) || 2
 
 log(`backlog sprint over ${sections.length} sections (≤${MAX} tickets each): ${sections.join(', ')}`)
 
