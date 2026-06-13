@@ -2,6 +2,7 @@
 {% block title %}Mission Control{% endblock %}
 {% block crumbs %}<span class="muted">Mission Control</span>{% endblock %}
 {% block actions %}
+  {% include "accounts/_org_switcher.html" %}
   <a class="btn btn-primary" href="/projects/new/">+ Import project</a>
 {% endblock %}
 

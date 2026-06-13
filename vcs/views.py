@@ -51,6 +51,102 @@ def pr_list(request):
     return render(request, "vcs/list.html", ctx)
 
 
+def _local_branches(repo):
+    """Best-effort list of local branch names for a repo path (read-only)."""
+    if not repo:
+        return []
+    res = services._git(repo, "branch", "--format=%(refname:short)")
+    if res.returncode != 0:
+        return []
+    return [b.strip() for b in res.stdout.splitlines() if b.strip()]
+
+
+@org_required
+def pr_new(request):
+    """Manually open a PR between two existing branches of an org project.
+
+    Org-scoped: only the requesting org's projects are selectable, and the
+    created PR inherits ``project.org`` so it stays tenant-isolated. This is the
+    human-driven counterpart to the autonomous loop's ``open_pull_request``; it
+    reuses the same git diff helpers but works from an existing branch instead
+    of a worktree, so the loop path is left completely untouched.
+    """
+    from projects.models import Project
+
+    projects = list(Project.objects.for_org(request.org).order_by("name"))
+
+    if request.method == "POST":
+        form = {k: request.POST.get(k, "").strip() for k in
+                ("project", "title", "head_branch", "base_branch", "description")}
+        project = next((p for p in projects if str(p.pk) == form["project"]), None)
+        errors = []
+        if project is None:
+            errors.append("Pick a project in your org.")
+        if not form["title"]:
+            errors.append("Title is required.")
+        if not form["head_branch"]:
+            errors.append("Head branch is required.")
+        base = form["base_branch"] or (project.default_branch if project else "main") or "main"
+
+        if not errors and project is not None:
+            repo = project.local_path or ""
+            diff, files, additions, deletions = services._compute_diff(
+                repo, base, form["head_branch"]
+            )
+            if not diff.strip():
+                errors.append(
+                    f"No diff between {base} and {form['head_branch']} — nothing to open."
+                )
+            else:
+                head_commit = services._git(
+                    repo, "rev-parse", form["head_branch"]
+                ).stdout.strip()
+                pr = PullRequest.objects.create(
+                    org=getattr(project, "org", None),
+                    project=project,
+                    worktree=None,
+                    number=services.next_pr_number(project),
+                    title=form["title"],
+                    description=form["description"],
+                    base_branch=base,
+                    head_branch=form["head_branch"],
+                    head_commit=head_commit,
+                    status=PullRequest.Status.OPEN,
+                    ci_status=PullRequest.CIStatus.NONE,
+                    author=getattr(request.user, "username", "") or "human",
+                    diff=diff,
+                    files_changed=files,
+                    additions=additions,
+                    deletions=deletions,
+                )
+                from core.models import Event
+
+                Event.log(
+                    f"opened PR #{pr.number}: {pr.title} "
+                    f"(+{additions} −{deletions} · {files} files)",
+                    project=project,
+                    actor=pr.author,
+                    level="success",
+                    icon="pr",
+                    url=pr.get_absolute_url(),
+                )
+                messages.success(request, f"Opened PR #{pr.number}")
+                return redirect("vcs:pr_detail", pk=pr.pk)
+
+        for e in errors:
+            messages.error(request, e)
+    else:
+        form = {"base_branch": "", "head_branch": "", "title": "", "description": "",
+                "project": str(projects[0].pk) if projects else ""}
+
+    project_branches = [
+        {"project": p, "branches": _local_branches(p.local_path or "")}
+        for p in projects
+    ]
+    ctx = {"projects": projects, "form": form, "project_branches": project_branches}
+    return render(request, "vcs/new.html", ctx)
+
+
 @org_required
 def pr_detail(request, pk):
     pr = get_object_or_404(_scoped_prs(request), pk=pk)

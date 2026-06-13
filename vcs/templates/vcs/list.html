@@ -2,6 +2,7 @@
 {% load helm_extras %}
 {% block title %}Pull Requests{% endblock %}
 {% block crumbs %}<span class="muted">Pull Requests</span>{% endblock %}
+{% block actions %}<a class="btn btn-primary" href="{% url 'vcs:new' %}">+ New PR</a>{% endblock %}
 
 {% block content %}
 <div class="row between mb-16">
