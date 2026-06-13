@@ -16,8 +16,8 @@
   {% if running %}<span class="pill pill-live"><span class="dot dot-live"></span> {{ running }} working</span>{% endif %}
 </div>
 
-{# Org-scoped filters: status / kind / project. Each chip links back to the
-   list view preserving the other active filters. #}
+{% comment %}Org-scoped filters: status / kind / project. Each chip links back to
+the list view preserving the other active filters.{% endcomment %}
 <div class="card mb-16">
   <div class="row gap-8" style="flex-wrap:wrap; align-items:baseline;">
     <span class="muted small">Kind</span>

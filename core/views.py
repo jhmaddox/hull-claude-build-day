@@ -1,3 +1,4 @@
+from django.contrib.auth.decorators import login_required
 from django.db.models import Q
 from django.shortcuts import render
 
@@ -57,6 +58,7 @@ def _org_scope(qs, request):
     return qs.filter(Q(**{field: org}) | Q(**{f"{field}__isnull": True}))
 
 
+@login_required
 def dashboard(request):
     """The Hull mission-control home: everything at a glance."""
     _adopt_deployments()
@@ -95,6 +97,7 @@ def dashboard(request):
     return render(request, "core/dashboard.html", ctx)
 
 
+@login_required
 def feed(request):
     """HTMX-polled activity feed fragment."""
     _adopt_deployments()
