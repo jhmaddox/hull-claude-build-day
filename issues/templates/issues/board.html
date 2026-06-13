@@ -4,6 +4,7 @@
 {% block crumbs %}<span class="muted">Issues</span> <span class="muted">/ Board</span>{% endblock %}
 {% block actions %}
   <a class="btn btn-ghost btn-sm" href="{% url 'issues:backlog' %}">Backlog</a>
+  <a class="btn btn-ghost btn-sm" href="{% url 'issues:agent_backlog' %}">Agent backlog</a>
   <a class="btn btn-ghost btn-sm" href="{% url 'issues:sprints' %}">Sprints</a>
   <a class="btn btn-primary btn-sm" href="{% url 'issues:ticket_new' %}">+ New Ticket</a>
 {% endblock %}
@@ -13,6 +14,45 @@
   <div class="title-xl">Board</div>
   <span class="muted small">{{ ticket_count }} ticket{{ ticket_count|pluralize }}</span>
 </div>
+
+<div class="grid grid-2 gap-8 mb-16">
+  <form method="post" action="{% url 'issues:board_new' %}" class="card issues-board-new">
+    {% csrf_token %}
+    <div class="card-head"><h2>New board</h2></div>
+    <div class="row gap-8">
+      <div class="field grow"><label class="label">Name</label>
+        <input type="text" name="name" placeholder="Platform" required></div>
+      <div class="field"><label class="label">Key</label>
+        <input type="text" name="key" placeholder="HULL" value="HULL"></div>
+    </div>
+    <div class="row gap-8 mt-8"><button class="btn btn-primary btn-sm" type="submit">Create board</button></div>
+  </form>
+  <form method="post" action="{% url 'issues:label_new' %}" class="card issues-label-new">
+    {% csrf_token %}
+    <input type="hidden" name="next" value="{% url 'issues:board' %}">
+    <div class="card-head"><h2>New label</h2></div>
+    <div class="row gap-8">
+      <div class="field grow"><label class="label">Name</label>
+        <input type="text" name="name" placeholder="infra" required></div>
+      <div class="field"><label class="label">Color</label>
+        <select name="color">
+          <option value="badge-neutral">Neutral</option>
+          <option value="badge-info">Info</option>
+          <option value="badge-success">Success</option>
+          <option value="badge-warn">Warn</option>
+          <option value="badge-danger">Danger</option>
+          <option value="badge-accent">Accent</option>
+        </select></div>
+    </div>
+    <div class="row gap-8 mt-8"><button class="btn btn-primary btn-sm" type="submit">Create label</button></div>
+  </form>
+</div>
+
+{% if boards %}
+<div class="row gap-6 mb-16" style="flex-wrap:wrap;">
+  {% for b in boards %}<span class="badge badge-neutral">{{ b.key }} · {{ b.name }}</span>{% endfor %}
+</div>
+{% endif %}
 
 <div class="issues-kanban" style="display:grid;grid-template-columns:repeat({{ columns|length }},minmax(220px,1fr));gap:14px;align-items:start;">
   {% for status, label, tickets in columns %}

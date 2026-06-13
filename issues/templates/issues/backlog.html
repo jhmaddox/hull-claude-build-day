@@ -4,11 +4,62 @@
 {% block crumbs %}<span class="muted">Issues</span> <span class="muted">/ Backlog</span>{% endblock %}
 {% block actions %}
   <a class="btn btn-ghost btn-sm" href="{% url 'issues:board' %}">Board</a>
+  <a class="btn btn-ghost btn-sm" href="{% url 'issues:agent_backlog' %}">Agent backlog</a>
   <a class="btn btn-primary btn-sm" href="{% url 'issues:ticket_new' %}">+ New Ticket</a>
 {% endblock %}
 
 {% block content %}
 <div class="title-xl mb-16">Backlog</div>
+
+<form method="get" class="card issues-filter-bar mb-16">
+  <div class="grid grid-3 gap-8">
+    <div class="field">
+      <label class="label">Status</label>
+      <select name="status">
+        <option value="">All statuses</option>
+        {% for v, l in status_choices %}<option value="{{ v }}" {% if f.status == v %}selected{% endif %}>{{ l }}</option>{% endfor %}
+      </select>
+    </div>
+    <div class="field">
+      <label class="label">Type</label>
+      <select name="type">
+        <option value="">All types</option>
+        {% for v, l in type_choices %}<option value="{{ v }}" {% if f.type == v %}selected{% endif %}>{{ l }}</option>{% endfor %}
+      </select>
+    </div>
+    <div class="field">
+      <label class="label">Priority</label>
+      <select name="priority">
+        <option value="">All priorities</option>
+        {% for v, l in priority_choices %}<option value="{{ v }}" {% if f.priority == v %}selected{% endif %}>{{ l }}</option>{% endfor %}
+      </select>
+    </div>
+    <div class="field">
+      <label class="label">Assignee</label>
+      <select name="assignee">
+        <option value="">Anyone</option>
+        <option value="unassigned" {% if f.assignee == 'unassigned' %}selected{% endif %}>Unassigned</option>
+        {% for u in assignees %}<option value="{{ u.pk }}" {% if f.assignee == u.pk|stringformat:'s' %}selected{% endif %}>{{ u.get_username }}</option>{% endfor %}
+      </select>
+    </div>
+    <div class="field">
+      <label class="label">Label</label>
+      <select name="label">
+        <option value="">Any label</option>
+        {% for l in labels %}<option value="{{ l.pk }}" {% if f.label == l.pk|stringformat:'s' %}selected{% endif %}>{{ l.name }}</option>{% endfor %}
+      </select>
+    </div>
+    <div class="field">
+      <label class="label">Search</label>
+      <input type="text" name="q" value="{{ f.q }}" placeholder="Title contains…">
+    </div>
+  </div>
+  <div class="row gap-8 mt-8">
+    <button class="btn btn-primary btn-sm" type="submit">Filter</button>
+    <a class="btn btn-ghost btn-sm" href="{% url 'issues:backlog' %}">Reset</a>
+  </div>
+</form>
+
 <div class="card pad-0 issues-backlog">
   <div class="list">
     {% for t in tickets %}
@@ -16,6 +67,7 @@
       <span class="mono small muted" style="width:84px;">{{ t.key }}</span>
       <span class="badge {{ t.status|status_badge }}">{{ t.get_status_display }}</span>
       <span class="grow" style="font-weight:600;">{{ t.title }}</span>
+      {% for l in t.labels.all %}<span class="badge {{ l.color }}">{{ l.name }}</span>{% endfor %}
       <span class="badge badge-neutral">{{ t.get_type_display }}</span>
       <span class="badge {{ t.priority|status_badge }}">{{ t.get_priority_display }}</span>
       <span class="small muted" style="width:120px;text-align:right;">
@@ -23,7 +75,7 @@
       </span>
     </a>
     {% empty %}
-    <div class="empty"><div class="big">▤</div>No tickets yet. <a class="link" href="{% url 'issues:ticket_new' %}">File one</a>.</div>
+    <div class="empty"><div class="big">▤</div>No matching tickets. <a class="link" href="{% url 'issues:ticket_new' %}">File one</a>.</div>
     {% endfor %}
   </div>
 </div>

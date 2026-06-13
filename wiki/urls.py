@@ -18,6 +18,13 @@ urlpatterns = [
     # HTMX edit-in-place fragments
     path("page/<int:pk>/inline/", views.page_edit_inline, name="page_edit_inline"),
     path("page/<int:pk>/body/", views.page_body, name="page_body"),
+    # related-work refs (HTMX)
+    path("page/<int:pk>/refs/attach/", views.attach_ref, name="attach_ref"),
+    path(
+        "page/<int:pk>/refs/<int:ref_pk>/remove/",
+        views.remove_ref,
+        name="remove_ref",
+    ),
     # history
     path("page/<int:pk>/history/", views.page_history, name="page_history"),
     path("page/<int:pk>/v/<int:number>/", views.revision_detail, name="revision"),

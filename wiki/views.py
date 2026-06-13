@@ -16,8 +16,9 @@ from django.utils.text import slugify
 
 from accounts.scoping import org_required, scoped
 
+from . import services
 from .markdown import extract_wikilinks
-from .models import Page, PageLink, PageRevision, Space
+from .models import Page, PageLink, PageRef, PageRevision, Space
 
 
 # --------------------------------------------------------------------------- #
@@ -136,9 +137,91 @@ def page_detail(request, pk):
             "tree": _page_tree(siblings),
             "children": children,
             "backlinks": backlinks,
+            "refs": _page_refs(request, page),
+            "ref_targets": _ref_targets(request),
             "rendered": _render(request, page.body),
         },
     )
+
+
+# --------------------------------------------------------------------------- #
+# Related-work refs (cross-app, org-scoped + defensive)
+# --------------------------------------------------------------------------- #
+def _page_refs(request, page):
+    """Org-scoped PageRefs for ``page``. The target object is resolved lazily and
+    defensively in the model so a deleted/foreign target can't 500 (R22)."""
+    return list(
+        scoped(PageRef, request)
+        .filter(page=page)
+        .select_related("project", "pull_request", "incident")
+    )
+
+
+def _ref_targets(request):
+    """Candidate targets for the attach-ref UI, scoped to ``request.org``.
+
+    Each source app is queried independently inside ``services`` wrapped in
+    try/except, so a broken / unmigrated cross-app dependency (e.g. a vcs column
+    without a migration) yields an empty list instead of taking the whole wiki
+    page detail down with a 500.
+    """
+    org = getattr(request, "org", None)
+    return services.ref_target_choices(org)
+
+
+@org_required
+def attach_ref(request, pk):
+    """HTMX: attach a related-work ref to the page, return the refs card.
+
+    Org-scoped + defensive: a target from another org (or a non-existent /
+    unavailable target) is rejected and no ref is created (R22)."""
+    page = _get_page(request, pk)
+    if request.method == "POST":
+        kind = (request.POST.get("kind") or "").strip()
+        target_pk = (request.POST.get("target") or "").strip()
+        note = (request.POST.get("note") or "").strip()
+        ref = None
+        if kind and target_pk:
+            ref = services.attach_ref(
+                page, kind, target_pk, org=request.org, note=note
+            )
+        if ref is None:
+            messages.error(request, "Couldn't attach that reference.")
+        else:
+            messages.success(request, "Linked related work.")
+    if request.headers.get("HX-Request"):
+        return render(
+            request,
+            "wiki/_refs.html",
+            {
+                "page": page,
+                "refs": _page_refs(request, page),
+                "ref_targets": _ref_targets(request),
+            },
+        )
+    return redirect(page.get_absolute_url())
+
+
+@org_required
+def remove_ref(request, pk, ref_pk):
+    """HTMX: detach a related-work ref (org-scoped), return the refs card."""
+    page = _get_page(request, pk)
+    if request.method == "POST":
+        ref = scoped(PageRef, request).filter(page=page, pk=ref_pk).first()
+        if ref is not None:
+            ref.delete()
+            messages.success(request, "Removed reference.")
+    if request.headers.get("HX-Request"):
+        return render(
+            request,
+            "wiki/_refs.html",
+            {
+                "page": page,
+                "refs": _page_refs(request, page),
+                "ref_targets": _ref_targets(request),
+            },
+        )
+    return redirect(page.get_absolute_url())
 
 
 @org_required
@@ -174,6 +257,7 @@ def page_new(request):
             page.save()
             page.snapshot_revision(request.user)
             _sync_links(request, page)
+            services.page_created(page, actor=request.user)
             messages.success(request, f"Created “{page.title}”.")
             return redirect(page.get_absolute_url())
 
@@ -236,6 +320,7 @@ def page_edit_inline(request, pk):
         page.updated_by = request.user
         page.save()
         _sync_links(request, page)
+        services.page_edited(page, actor=request.user)
         messages.success(request, "Saved.")
         return render(
             request,
@@ -358,6 +443,7 @@ def _save_page(request, page, redirect_to):
     page.updated_by = request.user
     page.save()
     _sync_links(request, page)
+    services.page_edited(page, actor=request.user)
     messages.success(request, f"Saved “{page.title}”.")
     return redirect(redirect_to)
 

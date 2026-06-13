@@ -1,0 +1,55 @@
+{% load helm_extras %}
+{# Related-work refs card + attach UI. Re-rendered standalone on HTMX attach/remove. #}
+<div class="card-head row between">
+  <span>Related work</span>
+  <span class="muted small">{{ refs|length }}</span>
+</div>
+
+{% if refs %}
+<div class="list">
+  {% for ref in refs %}
+  <div class="list-row" id="ref-{{ ref.pk }}">
+    <div class="grow">
+      <span class="badge">{{ ref.kind_label }}</span>
+      {% if ref.target_url %}
+        <a class="link" href="{{ ref.target_url }}">{{ ref.label }}</a>
+      {% else %}
+        <span class="muted">{{ ref.label }}</span>
+      {% endif %}
+      {% if ref.note %}<div class="muted small">{{ ref.note }}</div>{% endif %}
+    </div>
+    <button class="btn btn-ghost btn-sm"
+            hx-post="{% url 'wiki:remove_ref' page.pk ref.pk %}"
+            hx-target="#wiki-refs" hx-swap="innerHTML"
+            hx-headers='{"X-CSRFToken": "{{ csrf_token }}"}'>Remove</button>
+  </div>
+  {% endfor %}
+</div>
+{% else %}
+<div class="muted small" style="padding:6px 2px 10px;">No linked projects, PRs or incidents yet.</div>
+{% endif %}
+
+<form class="wiki-attach-ref" style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end;"
+      hx-post="{% url 'wiki:attach_ref' page.pk %}"
+      hx-target="#wiki-refs" hx-swap="innerHTML"
+      hx-headers='{"X-CSRFToken": "{{ csrf_token }}"}'>
+  {% csrf_token %}
+  <select name="kind" class="input" style="max-width:130px;">
+    <option value="project">Project</option>
+    <option value="pr">Pull request</option>
+    <option value="incident">Incident</option>
+  </select>
+  <select name="target" class="input" style="max-width:240px;">
+    <optgroup label="Projects">
+      {% for p in ref_targets.projects %}<option value="{{ p.pk }}">{{ p.name }}</option>{% endfor %}
+    </optgroup>
+    <optgroup label="Pull requests">
+      {% for pr in ref_targets.prs %}<option value="{{ pr.pk }}">#{{ pr.number }} {{ pr.title }}</option>{% endfor %}
+    </optgroup>
+    <optgroup label="Incidents">
+      {% for inc in ref_targets.incidents %}<option value="{{ inc.pk }}">INC-{{ inc.number }} {{ inc.title }}</option>{% endfor %}
+    </optgroup>
+  </select>
+  <input class="input" name="note" placeholder="note (optional)" style="max-width:180px;">
+  <button class="btn btn-primary btn-sm" type="submit">Link</button>
+</form>

@@ -13,7 +13,21 @@
     </div>
     {% if sprint.goal %}<div class="muted mt-8">{{ sprint.goal }}</div>{% endif %}
   </div>
-  <span class="muted small">{{ done }}/{{ total }} done · {{ done|pct:total }}%</span>
+  <div class="row gap-8">
+    <span class="muted small">{{ done }}/{{ total }} done · {{ done|pct:total }}%</span>
+    {% if sprint.status != 'active' and sprint.status != 'completed' %}
+    <form method="post" action="{% url 'issues:sprint_action' sprint.pk %}">
+      {% csrf_token %}<input type="hidden" name="action" value="start">
+      <button class="btn btn-primary btn-sm" type="submit">Start sprint</button>
+    </form>
+    {% endif %}
+    {% if sprint.status != 'completed' %}
+    <form method="post" action="{% url 'issues:sprint_action' sprint.pk %}">
+      {% csrf_token %}<input type="hidden" name="action" value="complete">
+      <button class="btn btn-success btn-sm" type="submit">Complete sprint</button>
+    </form>
+    {% endif %}
+  </div>
 </div>
 
 <div class="issues-kanban" style="display:grid;grid-template-columns:repeat({{ columns|length }},minmax(220px,1fr));gap:14px;align-items:start;">

@@ -6,6 +6,23 @@
 
 {% block content %}
 <div class="title-xl mb-16">Sprints</div>
+
+<form method="post" action="{% url 'issues:sprint_new' %}" class="card issues-sprint-new mb-16">
+  {% csrf_token %}
+  <div class="card-head"><h2>New sprint</h2></div>
+  <div class="grid grid-3 gap-8">
+    <div class="field"><label class="label">Name</label>
+      <input type="text" name="name" placeholder="Sprint 3" required></div>
+    <div class="field"><label class="label">Starts</label>
+      <input type="date" name="starts_at"></div>
+    <div class="field"><label class="label">Ends</label>
+      <input type="date" name="ends_at"></div>
+  </div>
+  <div class="field"><label class="label">Goal</label>
+    <input type="text" name="goal" placeholder="Ship the agent backlog"></div>
+  <div class="row gap-8 mt-8"><button class="btn btn-primary btn-sm" type="submit">Create sprint</button></div>
+</form>
+
 <div class="card pad-0 issues-sprints">
   <div class="list">
     {% for r in rows %}

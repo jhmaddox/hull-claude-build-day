@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+{% load helm_extras %}
+{% block title %}Issues · Agent backlog{% endblock %}
+{% block crumbs %}<a class="link" href="{% url 'issues:board' %}">Issues</a> <span class="muted">/ Agent backlog</span>{% endblock %}
+{% block actions %}
+  <a class="btn btn-ghost btn-sm" href="{% url 'issues:board' %}">Board</a>
+  <a class="btn btn-ghost btn-sm" href="{% url 'issues:backlog' %}">Backlog</a>
+{% endblock %}
+
+{% block content %}
+<div class="row between mb-16">
+  <div class="title-xl">Agent backlog</div>
+  <span class="muted small">{{ rows|length }} agent-filed ticket{{ rows|length|pluralize }}</span>
+</div>
+<p class="muted mb-16">Tickets filed by the autonomous crew — incident remediations, PM-agent stories — with live cross-links to the incident, PR and agent run that produced them.</p>
+
+<div class="card pad-0 issues-agent-backlog">
+  <div class="list">
+    {% for row in rows %}
+    {% with t=row.ticket %}
+    <div class="list-row" style="align-items:flex-start;">
+      <a class="mono small muted link" href="{% url 'issues:ticket' t.pk %}" style="width:84px;">{{ t.key }}</a>
+      <span class="badge {{ t.status|status_badge }}">{{ t.get_status_display }}</span>
+      <div class="grow">
+        <a class="link" href="{% url 'issues:ticket' t.pk %}" style="font-weight:600;">{{ t.title }}</a>
+        <div class="row gap-6 mt-8" style="flex-wrap:wrap;">
+          <span class="badge badge-neutral">{{ t.get_type_display }}</span>
+          {% for l in t.labels.all %}<span class="badge {{ l.color }}">{{ l.name }}</span>{% endfor %}
+          {% if t.reporter_name %}<span class="small muted">by {{ t.reporter_name }}</span>{% endif %}
+          {% if t.incident_id %}
+            {% if row.links.incident_url %}<a class="badge badge-danger" href="{{ row.links.incident_url }}">⚠ INC #{{ t.incident.number }}</a>{% else %}<span class="badge badge-danger">⚠ INC #{{ t.incident.number }}</span>{% endif %}
+          {% endif %}
+          {% if t.pull_request_id %}
+            {% if row.links.pull_request_url %}<a class="badge badge-info" href="{{ row.links.pull_request_url }}">⑂ PR #{{ t.pull_request.number }}</a>{% else %}<span class="badge badge-info">⑂ PR #{{ t.pull_request.number }}</span>{% endif %}
+          {% endif %}
+          {% if t.agent_run_id %}
+            {% if row.links.agent_run_url %}<a class="badge badge-accent" href="{{ row.links.agent_run_url }}">✦ run #{{ t.agent_run.pk }}</a>{% else %}<span class="badge badge-accent">✦ run #{{ t.agent_run.pk }}</span>{% endif %}
+          {% endif %}
+        </div>
+      </div>
+      <span class="badge {{ t.priority|status_badge }}">{{ t.get_priority_display }}</span>
+    </div>
+    {% endwith %}
+    {% empty %}
+    <div class="empty"><div class="big">✦</div>No agent-filed tickets yet. The crew will populate this as incidents are remediated.</div>
+    {% endfor %}
+  </div>
+</div>
+{% endblock %}

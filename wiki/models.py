@@ -242,6 +242,111 @@ class PageLink(OrgScopedModel):
         return self.target_id is not None
 
 
+class PageRef(OrgScopedModel):
+    """A "related work" reference linking a wiki ``Page`` to the rest of Hull —
+    a ``projects.Project``, a ``vcs.PullRequest`` or an ``observability.Incident``.
+
+    All three target FKs are nullable so a ref points at exactly one thing while
+    staying additive/loop-safe; ``on_delete=SET_NULL`` keeps the page rendering
+    even if the target is later deleted (R22). Org is nullable per the tenancy
+    contract (R19).
+    """
+
+    KIND_PROJECT = "project"
+    KIND_PR = "pr"
+    KIND_INCIDENT = "incident"
+
+    page = models.ForeignKey(
+        Page, on_delete=models.CASCADE, related_name="refs"
+    )
+    project = models.ForeignKey(
+        "projects.Project",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="+",
+    )
+    pull_request = models.ForeignKey(
+        "vcs.PullRequest",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="+",
+    )
+    incident = models.ForeignKey(
+        "observability.Incident",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="+",
+    )
+    note = models.CharField(max_length=300, blank=True)
+    created_at = models.DateTimeField(default=timezone.now)
+
+    class Meta:
+        ordering = ["-created_at"]
+        indexes = [models.Index(fields=["org", "page"])]
+
+    def __str__(self):
+        return f"{self.page} -> {self.kind}:{self.label}"
+
+    @property
+    def target(self):
+        """Return the single non-null target object (or ``None`` if deleted)."""
+        return self.project or self.pull_request or self.incident
+
+    @property
+    def kind(self):
+        if self.project_id:
+            return self.KIND_PROJECT
+        if self.pull_request_id:
+            return self.KIND_PR
+        if self.incident_id:
+            return self.KIND_INCIDENT
+        return "unknown"
+
+    @property
+    def kind_label(self):
+        return {
+            self.KIND_PROJECT: "Project",
+            self.KIND_PR: "Pull request",
+            self.KIND_INCIDENT: "Incident",
+        }.get(self.kind, "Reference")
+
+    @property
+    def kind_icon(self):
+        return {
+            self.KIND_PROJECT: "rocket",
+            self.KIND_PR: "pr",
+            self.KIND_INCIDENT: "incident",
+        }.get(self.kind, "log")
+
+    @property
+    def label(self):
+        """A human label for the target, robust to a deleted target row."""
+        try:
+            if self.project_id and self.project is not None:
+                return self.project.name
+            if self.pull_request_id and self.pull_request is not None:
+                return f"#{self.pull_request.number} {self.pull_request.title}"
+            if self.incident_id and self.incident is not None:
+                return f"INC-{self.incident.number} {self.incident.title}"
+        except Exception:  # noqa: BLE001 — broken/foreign target row, stay up
+            pass
+        return self.note or "(removed)"
+
+    @property
+    def target_url(self):
+        """URL of the target, or ``None`` if the target is gone (R22)."""
+        try:
+            tgt = self.target
+            if tgt is not None and hasattr(tgt, "get_absolute_url"):
+                return tgt.get_absolute_url()
+        except Exception:  # noqa: BLE001
+            return None
+        return None
+
+
 # --------------------------------------------------------------------------- #
 # slug helpers (org/space-scoped uniqueness)
 # --------------------------------------------------------------------------- #

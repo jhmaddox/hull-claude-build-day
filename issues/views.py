@@ -10,6 +10,8 @@ from __future__ import annotations
 from django.contrib import messages
 from django.contrib.auth import get_user_model
 from django.shortcuts import get_object_or_404, redirect, render
+from django.urls import reverse
+from django.utils import timezone
 
 from accounts.scoping import org_required, scoped
 
@@ -62,9 +64,64 @@ def backlog(request):
         scoped(Ticket, request)
         .select_related("board", "sprint", "assignee")
         .prefetch_related("labels")
-        .order_by("status", "order", "-created_at")
     )
-    return render(request, "issues/backlog.html", {"tickets": tickets})
+
+    # --- Filter bar (simple GET form; empty param = no filter) ------------- #
+    f_status = (request.GET.get("status") or "").strip()
+    f_type = (request.GET.get("type") or "").strip()
+    f_priority = (request.GET.get("priority") or "").strip()
+    f_assignee = (request.GET.get("assignee") or "").strip()
+    f_label = (request.GET.get("label") or "").strip()
+    f_q = (request.GET.get("q") or "").strip()
+
+    valid_status = {s for s, _ in Ticket.Status.choices}
+    valid_type = {t for t, _ in Ticket.Type.choices}
+    valid_priority = {p for p, _ in Ticket.Priority.choices}
+
+    if f_status in valid_status:
+        tickets = tickets.filter(status=f_status)
+    if f_type in valid_type:
+        tickets = tickets.filter(type=f_type)
+    if f_priority in valid_priority:
+        tickets = tickets.filter(priority=f_priority)
+    if f_assignee:
+        if f_assignee == "unassigned":
+            tickets = tickets.filter(assignee__isnull=True)
+        else:
+            tickets = tickets.filter(assignee_id=f_assignee)
+    if f_label:
+        tickets = tickets.filter(labels__id=f_label)
+    if f_q:
+        tickets = tickets.filter(title__icontains=f_q)
+
+    tickets = tickets.order_by("status", "order", "-created_at").distinct()
+
+    # Assignee options: users that report/assigned within this org's tickets.
+    assignee_ids = (
+        scoped(Ticket, request)
+        .exclude(assignee__isnull=True)
+        .values_list("assignee_id", flat=True)
+        .distinct()
+    )
+    assignees = User.objects.filter(pk__in=list(assignee_ids))
+
+    ctx = {
+        "tickets": tickets,
+        "labels": scoped(Label, request),
+        "assignees": assignees,
+        "status_choices": Ticket.Status.choices,
+        "type_choices": Ticket.Type.choices,
+        "priority_choices": Ticket.Priority.choices,
+        "f": {
+            "status": f_status,
+            "type": f_type,
+            "priority": f_priority,
+            "assignee": f_assignee,
+            "label": f_label,
+            "q": f_q,
+        },
+    }
+    return render(request, "issues/backlog.html", ctx)
 
 
 # --------------------------------------------------------------------------- #
@@ -73,13 +130,50 @@ def backlog(request):
 @org_required
 def ticket(request, pk):
     t = get_object_or_404(scoped(Ticket, request), pk=pk)
+    attached_label_ids = set(t.labels.values_list("id", flat=True))
     ctx = {
         "ticket": t,
         "comments": t.comments.select_related("author").all(),
         "activities": t.activities.all(),
         "status_choices": Ticket.Status.choices,
+        "sprints": scoped(Sprint, request),
+        "all_labels": scoped(Label, request),
+        "attached_label_ids": attached_label_ids,
+        "links": _ticket_links(t),
     }
     return render(request, "issues/ticket.html", ctx)
+
+
+def _safe_url(obj):
+    """Best-effort absolute URL for a cross-linked object; '' on any failure."""
+    if obj is None:
+        return ""
+    try:
+        return obj.get_absolute_url()
+    except Exception:  # noqa: BLE001 — a missing reverse must never 500.
+        return ""
+
+
+def _agent_run_url(agent_run):
+    """Best-effort URL to an agent run detail page; '' if reverse fails."""
+    if agent_run is None:
+        return ""
+    try:
+        return reverse("agents:detail", args=[agent_run.pk])
+    except Exception:  # noqa: BLE001
+        try:
+            return agent_run.get_absolute_url()
+        except Exception:  # noqa: BLE001
+            return ""
+
+
+def _ticket_links(t):
+    """Pre-resolve cross-link URLs so templates degrade gracefully (no 500)."""
+    return {
+        "incident_url": _safe_url(getattr(t, "incident", None)),
+        "pull_request_url": _safe_url(getattr(t, "pull_request", None)),
+        "agent_run_url": _agent_run_url(getattr(t, "agent_run", None)),
+    }
 
 
 @org_required
@@ -243,3 +337,183 @@ def sprint_detail(request, pk):
         "done": sum(1 for t in tickets if t.status == Ticket.Status.DONE),
     }
     return render(request, "issues/sprint_detail.html", ctx)
+
+
+# --------------------------------------------------------------------------- #
+# Board management (create)
+# --------------------------------------------------------------------------- #
+@org_required
+def board_new(request):
+    if request.method == "POST":
+        name = (request.POST.get("name") or "").strip()
+        key = (request.POST.get("key") or "HULL").strip().upper()[:12] or "HULL"
+        if not name:
+            messages.error(request, "Board name is required.")
+            return redirect("issues:board")
+        project = None
+        pid = request.POST.get("project")
+        if pid:
+            try:
+                from projects.models import Project
+
+                project = scoped(Project, request).filter(pk=pid).first()
+            except Exception:  # noqa: BLE001
+                project = None
+        Board.objects.create(
+            org=request.org, name=name, key=key, project=project
+        )
+        messages.success(request, f"Created board {key}.")
+    return redirect("issues:board")
+
+
+# --------------------------------------------------------------------------- #
+# Sprint management (create / start / complete / add-remove ticket)
+# --------------------------------------------------------------------------- #
+def _parse_dt(value):
+    if not value:
+        return None
+    from django.utils.dateparse import parse_datetime, parse_date
+
+    dt = parse_datetime(value)
+    if dt is None:
+        d = parse_date(value)
+        if d is not None:
+            from datetime import datetime, time
+
+            dt = datetime.combine(d, time.min)
+    if dt is not None and timezone.is_naive(dt):
+        dt = timezone.make_aware(dt, timezone.get_current_timezone())
+    return dt
+
+
+@org_required
+def sprint_new(request):
+    if request.method == "POST":
+        name = (request.POST.get("name") or "").strip()
+        if not name:
+            messages.error(request, "Sprint name is required.")
+            return redirect("issues:sprints")
+        board_obj = None
+        bid = request.POST.get("board")
+        if bid:
+            board_obj = scoped(Board, request).filter(pk=bid).first()
+        s = Sprint.objects.create(
+            org=request.org,
+            name=name,
+            goal=request.POST.get("goal", ""),
+            board=board_obj,
+            starts_at=_parse_dt(request.POST.get("starts_at")),
+            ends_at=_parse_dt(request.POST.get("ends_at")),
+        )
+        messages.success(request, f"Created sprint {s.name}.")
+        return redirect("issues:sprint", pk=s.pk)
+    return redirect("issues:sprints")
+
+
+@org_required
+def sprint_action(request, pk):
+    """Start (-> active) or complete (-> completed) a sprint."""
+    s = get_object_or_404(scoped(Sprint, request), pk=pk)
+    if request.method == "POST":
+        action = request.POST.get("action")
+        if action == "start":
+            s.status = Sprint.Status.ACTIVE
+            if not s.starts_at:
+                s.starts_at = timezone.now()
+            s.save(update_fields=["status", "starts_at"])
+        elif action == "complete":
+            s.status = Sprint.Status.COMPLETED
+            if not s.ends_at:
+                s.ends_at = timezone.now()
+            s.save(update_fields=["status", "ends_at"])
+    return redirect("issues:sprint", pk=s.pk)
+
+
+@org_required
+def ticket_sprint(request, pk):
+    """Add/remove a ticket to/from a sprint from the ticket detail page."""
+    t = get_object_or_404(scoped(Ticket, request), pk=pk)
+    if request.method == "POST":
+        sid = (request.POST.get("sprint") or "").strip()
+        if sid:
+            sprint_obj = scoped(Sprint, request).filter(pk=sid).first()
+            if sprint_obj is not None:
+                t.sprint = sprint_obj
+                t.save(update_fields=["sprint", "updated_at"])
+                services.log_activity(
+                    t,
+                    f"added to sprint {sprint_obj.name}",
+                    actor=request.user.get_username(),
+                    icon="merge",
+                )
+        else:
+            if t.sprint_id:
+                old = t.sprint.name
+                t.sprint = None
+                t.save(update_fields=["sprint", "updated_at"])
+                services.log_activity(
+                    t,
+                    f"removed from sprint {old}",
+                    actor=request.user.get_username(),
+                )
+    return redirect("issues:ticket", pk=t.pk)
+
+
+# --------------------------------------------------------------------------- #
+# Labels (create / attach / detach)
+# --------------------------------------------------------------------------- #
+@org_required
+def label_new(request):
+    if request.method == "POST":
+        name = (request.POST.get("name") or "").strip()
+        color = (request.POST.get("color") or "badge-neutral").strip()
+        if name:
+            Label.objects.create(org=request.org, name=name, color=color)
+            messages.success(request, f"Created label {name}.")
+    nxt = request.POST.get("next") or request.GET.get("next")
+    if nxt:
+        return redirect(nxt)
+    return redirect("issues:backlog")
+
+
+@org_required
+def ticket_labels(request, pk):
+    """Set the labels on a ticket from a multi-value POST (org-scoped)."""
+    t = get_object_or_404(scoped(Ticket, request), pk=pk)
+    if request.method == "POST":
+        ids = request.POST.getlist("labels")
+        org_labels = scoped(Label, request).filter(pk__in=ids)
+        t.labels.set(org_labels)
+        services.log_activity(
+            t,
+            "updated labels: "
+            + (", ".join(label.name for label in org_labels) or "none"),
+            actor=request.user.get_username(),
+        )
+    return redirect("issues:ticket", pk=t.pk)
+
+
+# --------------------------------------------------------------------------- #
+# Agent backlog — surface agent-filed tickets with cross-links
+# --------------------------------------------------------------------------- #
+@org_required
+def agent_backlog(request):
+    from django.db.models import Q
+
+    tickets = (
+        scoped(Ticket, request)
+        .select_related("incident", "pull_request", "agent_run", "assignee")
+        .prefetch_related("labels")
+        .filter(
+            Q(incident__isnull=False)
+            | Q(pull_request__isnull=False)
+            | Q(agent_run__isnull=False)
+            | Q(reporter__isnull=True, reporter_name__gt="")
+        )
+        .order_by("-created_at")
+        .distinct()
+    )
+    rows = []
+    for t in tickets:
+        rows.append({"ticket": t, "links": _ticket_links(t)})
+    return render(request, "issues/agent_backlog.html", {"rows": rows})

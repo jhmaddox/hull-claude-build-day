@@ -500,6 +500,21 @@ def _remediate_pipeline(incident_id: int) -> str:
     inc = Incident.objects.select_related("project", "deployment").get(pk=incident_id)
     project = inc.project
 
+    def _issue_hook(**kwargs):
+        """Best-effort bridge into the Issues agent backlog. NEVER raises.
+
+        Files-or-updates the single Ticket linked to this incident. Wrapped so
+        any Issues failure leaves the remediation loop + terminal resolution
+        completely unchanged.
+        """
+        try:
+            from issues import services as issue_svc
+
+            return issue_svc.ticket_for_incident(inc, **kwargs)
+        except Exception as _exc:  # noqa: BLE001 — Issues must never break the loop
+            print(f"[helm-orch] issues hook failed: {_exc}")
+            return None
+
     def ev(verb, level="info", icon="fix", url="", oncall_kind=None):
         Event.log(
             verb,
@@ -527,6 +542,9 @@ def _remediate_pipeline(incident_id: int) -> str:
     inc.status = Incident.Status.REMEDIATING
     inc.save(update_fields=["status"])
     ev(f"INC-{inc.number}: dispatching remediation agent", icon="agent")
+
+    # (a) incident detected -> file ticket + link incident (additive, idempotent)
+    _issue_hook(status="todo")
 
     # 2. worktree off the prod branch --------------------------------------
     prod_env = (
@@ -590,6 +608,10 @@ def _remediate_pipeline(incident_id: int) -> str:
         icon="pr",
         url=pr.get_absolute_url(),
     )
+
+    # (b) agent spawned / PR opened -> link pull_request + agent_run, in_progress
+    _issue_hook(status="in_progress", pull_request=pr, agent_run=agent_run)
+
     ci_passed = _run_ci_inline(pr.id)
 
     # 6. merge + redeploy on green -----------------------------------------
@@ -631,6 +653,9 @@ def _remediate_pipeline(incident_id: int) -> str:
         icon="check",
         oncall_kind="resolved",
     )
+
+    # (c) incident resolved -> set the linked ticket to done (best-effort).
+    _issue_hook(status="done", pull_request=pr, agent_run=agent_run)
     # oncall (Incidents v2): best-effort auto-stub postmortem for sev1/sev2.
     try:
         from oncall.services import loop as _oncall_loop

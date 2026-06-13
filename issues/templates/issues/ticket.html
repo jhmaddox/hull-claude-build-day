@@ -84,27 +84,60 @@
       </form>
     </div>
 
+    <div class="card mb-16 issues-sprint-picker">
+      <div class="card-head"><h2>Sprint</h2></div>
+      <form method="post" action="{% url 'issues:ticket_sprint' ticket.pk %}" class="row gap-8">
+        {% csrf_token %}
+        <select name="sprint" class="grow">
+          <option value="">— No sprint —</option>
+          {% for s in sprints %}<option value="{{ s.pk }}" {% if ticket.sprint_id == s.pk %}selected{% endif %}>{{ s.name }}</option>{% endfor %}
+        </select>
+        <button class="btn btn-primary btn-sm" type="submit">Set</button>
+      </form>
+    </div>
+
+    <div class="card mb-16 issues-labels">
+      <div class="card-head"><h2>Labels</h2></div>
+      <div class="row gap-6 mb-8" style="flex-wrap:wrap;">
+        {% for l in ticket.labels.all %}<span class="badge {{ l.color }}">{{ l.name }}</span>{% empty %}<span class="muted small">No labels.</span>{% endfor %}
+      </div>
+      <form method="post" action="{% url 'issues:ticket_labels' ticket.pk %}">
+        {% csrf_token %}
+        <div class="list pad-0">
+          {% for l in all_labels %}
+          <label class="list-row" style="cursor:pointer;">
+            <input type="checkbox" name="labels" value="{{ l.pk }}" {% if l.pk in attached_label_ids %}checked{% endif %}>
+            <span class="badge {{ l.color }} grow">{{ l.name }}</span>
+          </label>
+          {% empty %}
+          <div class="muted small" style="padding:8px 0;">No labels yet — create one on the board.</div>
+          {% endfor %}
+        </div>
+        {% if all_labels %}<button class="btn btn-ghost btn-sm mt-8" type="submit">Save labels</button>{% endif %}
+      </form>
+    </div>
+
     <div class="card mb-16 issues-links">
       <div class="card-head"><h2>Links</h2></div>
       <div class="list pad-0">
         {% if ticket.pull_request %}
-        <a class="list-row" href="{{ ticket.pull_request.get_absolute_url }}">
+        <div class="list-row">
           <span class="feed-ico">⑂</span>
-          <span class="grow">PR #{{ ticket.pull_request.number }} · {{ ticket.pull_request.title }}</span>
+          {% if links.pull_request_url %}<a class="link grow" href="{{ links.pull_request_url }}">PR #{{ ticket.pull_request.number }} · {{ ticket.pull_request.title }}</a>{% else %}<span class="grow">PR #{{ ticket.pull_request.number }} · {{ ticket.pull_request.title }}</span>{% endif %}
           <span class="badge {{ ticket.pull_request.status|status_badge }}">{{ ticket.pull_request.get_status_display }}</span>
-        </a>
+        </div>
         {% endif %}
         {% if ticket.incident %}
-        <a class="list-row" href="{{ ticket.incident.get_absolute_url }}">
+        <div class="list-row">
           <span class="feed-ico">⚠</span>
-          <span class="grow">Incident #{{ ticket.incident.number }} · {{ ticket.incident.title }}</span>
+          {% if links.incident_url %}<a class="link grow" href="{{ links.incident_url }}">Incident #{{ ticket.incident.number }} · {{ ticket.incident.title }}</a>{% else %}<span class="grow">Incident #{{ ticket.incident.number }} · {{ ticket.incident.title }}</span>{% endif %}
           <span class="badge {{ ticket.incident.status|status_badge }}">{{ ticket.incident.get_status_display }}</span>
-        </a>
+        </div>
         {% endif %}
         {% if ticket.agent_run %}
         <div class="list-row">
           <span class="feed-ico">✦</span>
-          <span class="grow">Agent run #{{ ticket.agent_run.pk }}</span>
+          {% if links.agent_run_url %}<a class="link grow" href="{{ links.agent_run_url }}">Agent run #{{ ticket.agent_run.pk }}</a>{% else %}<span class="grow">Agent run #{{ ticket.agent_run.pk }}</span>{% endif %}
           <span class="badge {{ ticket.agent_run.status|status_badge }}">{{ ticket.agent_run.status }}</span>
         </div>
         {% endif %}

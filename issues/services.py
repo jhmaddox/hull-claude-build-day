@@ -257,3 +257,118 @@ def get_or_create_default_board(org=None, *, name="Backlog", key="HULL"):
     return Board.objects.get_or_create(
         org=org, name=name, defaults={"key": key}
     )
+
+
+def create_ticket(org, title, **kwargs):
+    """Thin alias so agents/other slices can call ``issues.services.create_ticket``.
+
+    Mirrors :func:`file_ticket` but takes ``org`` positionally (matching the
+    brief's ``create_ticket(org, ...)``). Never raises into the loop.
+    """
+    try:
+        return file_ticket(title, org=org, **kwargs)
+    except Exception:  # noqa: BLE001 — agent backlog must never break a caller
+        return None
+
+
+# --------------------------------------------------------------------------- #
+# CROWN JEWEL: wire the autonomous loop into the agent backlog
+# --------------------------------------------------------------------------- #
+def ticket_for_incident(
+    incident, *, status=None, pull_request=None, agent_run=None, org=None
+):
+    """Find-or-create exactly ONE Ticket linked to ``incident`` and update it.
+
+    The ticket is keyed on the ``incident`` FK (``type=incident``) so calling
+    this repeatedly for the same incident is **idempotent** — it always leaves
+    exactly one linked ticket. Optionally updates ``status`` and attaches a
+    ``pull_request`` / ``agent_run``. Logs an :class:`Activity` row and a
+    best-effort :class:`core.models.Event`.
+
+    LOOP-SAFE: the entire body is wrapped in try/except. Any error (including a
+    forced failure in ticket creation or a bad incident) returns ``None`` and is
+    **never** propagated into the autonomous remediation loop.
+    """
+    try:
+        if incident is None:
+            return None
+
+        # Resolve org best-effort: explicit arg wins, else the incident's
+        # project org (kept nullable so the request-less loop still works).
+        if org is None:
+            org = getattr(getattr(incident, "project", None), "org", None)
+
+        # Idempotent find-or-create keyed on the incident FK. ``.objects`` is the
+        # unscoped manager (no request here) so we always see the existing one.
+        ticket = Ticket.objects.filter(incident=incident).order_by("pk").first()
+        created = False
+        if ticket is None:
+            number = getattr(incident, "number", incident.pk)
+            title = getattr(incident, "title", "") or f"Incident {number}"
+            ticket = Ticket.objects.create(
+                org=org,
+                title=f"INC-{number}: {title}"[:300],
+                description=(
+                    getattr(incident, "error_message", "") or ""
+                ),
+                type=Ticket.Type.INCIDENT,
+                priority=Ticket.Priority.HIGH,
+                status=status or Ticket.Status.TODO,
+                incident=incident,
+                pull_request=pull_request,
+                agent_run=agent_run,
+                reporter_name="claude-sre",
+            )
+            ticket.key = next_ticket_key(org=org)
+            ticket.save(update_fields=["key"])
+            created = True
+            log_activity(
+                ticket,
+                f"filed for INC-{number} by autonomous loop",
+                actor="claude-sre",
+                level="info",
+                icon="incident",
+            )
+
+        # Update mutable fields/links on the existing-or-new ticket.
+        update_fields = []
+        bits = []
+        if pull_request is not None and ticket.pull_request_id != getattr(
+            pull_request, "pk", None
+        ):
+            ticket.pull_request = pull_request
+            update_fields.append("pull_request")
+            bits.append(f"PR #{getattr(pull_request, 'number', pull_request)}")
+        if agent_run is not None and ticket.agent_run_id != getattr(
+            agent_run, "pk", None
+        ):
+            ticket.agent_run = agent_run
+            update_fields.append("agent_run")
+            bits.append(f"agent run #{getattr(agent_run, 'pk', agent_run)}")
+        if status is not None and ticket.status != status:
+            ticket.status = status
+            update_fields.append("status")
+
+        if update_fields:
+            update_fields.append("updated_at")
+            ticket.save(update_fields=update_fields)
+            verb = []
+            if bits:
+                verb.append("linked " + ", ".join(bits))
+            if status is not None and "status" in update_fields:
+                verb.append(f"status → {ticket.get_status_display()}")
+            if verb:
+                level = (
+                    "success" if status == Ticket.Status.DONE else "info"
+                )
+                icon = "check" if status == Ticket.Status.DONE else "merge"
+                log_activity(
+                    ticket,
+                    "; ".join(verb),
+                    actor="claude-sre",
+                    level=level,
+                    icon=icon,
+                )
+        return ticket
+    except Exception:  # noqa: BLE001 — MUST NEVER raise into the loop.
+        return None
