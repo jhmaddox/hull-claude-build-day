@@ -13,10 +13,11 @@ HELM_HOST="${HELM_DOMAIN:-${PUBLIC_IP}.sslip.io}"
 
 echo "▸ System packages"
 sudo apt-get update -y
-sudo apt-get install -y git curl build-essential python3.11 python3.11-venv python3.11-dev
-
+sudo apt-get install -y git curl build-essential
+# uv provides Python 3.11 (Ubuntu 22.04 has no python3.11 apt package).
 command -v uv >/dev/null || { curl -LsSf https://astral.sh/uv/install.sh | sh; }
 export PATH="$HOME/.local/bin:$PATH"
+uv python install 3.11
 
 echo "▸ Node + Claude Code CLI"
 command -v node >/dev/null || { curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash -; sudo apt-get install -y nodejs; }
@@ -52,7 +53,7 @@ After=network.target
 WorkingDirectory=${HELM_DIR}
 EnvironmentFile=${HELM_DIR}/.env
 Environment=PATH=${HELM_DIR}/.venv/bin:${HOME}/.local/bin:/usr/local/bin:/usr/bin:/bin
-ExecStart=${HELM_DIR}/.venv/bin/gunicorn helm.wsgi:application --bind 127.0.0.1:8000 --workers 3 --threads 6 --timeout 180
+ExecStart=${HELM_DIR}/.venv/bin/gunicorn helm.wsgi:application --bind 127.0.0.1:8000 --workers 1 --threads 8 --timeout 180
 Restart=always
 User=${USER}
 [Install]
