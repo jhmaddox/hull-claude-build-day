@@ -153,8 +153,12 @@ HELM_TEMPORAL_TASK_QUEUE = os.environ.get("HELM_TEMPORAL_TASK_QUEUE", "hull-orch
 # Temporal Cloud auth (API key + TLS). Empty key + tls off => local dev server.
 HELM_TEMPORAL_API_KEY = os.environ.get("TEMPORAL_API_KEY", "")
 HELM_TEMPORAL_TLS = os.environ.get("TEMPORAL_TLS_ENABLED", "false") == "true"
-# Enable Temporal-backed orchestration when explicitly turned on OR when a Cloud
-# API key is present.
-HELM_USE_TEMPORAL = (
-    os.environ.get("HELM_USE_TEMPORAL", "0") == "1" or bool(HELM_TEMPORAL_API_KEY)
-)
+# Enable Temporal-backed orchestration. An EXPLICIT HELM_USE_TEMPORAL wins
+# ("0" force-disables even when a key is present — important on hosts with the
+# Cloud key in env but no worker running, e.g. the demo VM); if unset, auto-on
+# when a Cloud API key is present.
+_use_temporal = os.environ.get("HELM_USE_TEMPORAL")
+if _use_temporal is None:
+    HELM_USE_TEMPORAL = bool(HELM_TEMPORAL_API_KEY)
+else:
+    HELM_USE_TEMPORAL = _use_temporal == "1"

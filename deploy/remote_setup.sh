@@ -40,9 +40,23 @@ grep -q '^HELM_BASE_URL=' .env || echo "HELM_BASE_URL=https://${HELM_HOST}" >> .
 grep -q '^HELM_CSRF_ORIGINS=' .env || echo "HELM_CSRF_ORIGINS=https://${HELM_HOST}" >> .env
 set -a; source .env; set +a
 
-echo "▸ Migrate + collectstatic"
+echo "▸ Fresh DB + migrate + collectstatic (demo box: clean multitenant schema)"
+# Demo box — start from a clean DB so the new multitenant schema applies cleanly
+# (no leftover v1 rows). Set HELM_KEEP_DB=1 to preserve.
+[ "${HELM_KEEP_DB:-0}" = "1" ] || rm -f db.sqlite3
 python manage.py migrate --noinput
 python manage.py collectstatic --noinput
+
+echo "▸ Seed a demo login (demo / demo12345, org 'Acme Inc')"
+python manage.py shell -c "
+from django.contrib.auth.models import User
+from accounts.models import Org, Membership
+u,_=User.objects.get_or_create(username='demo', defaults={'email':'demo@hull.dev'})
+u.set_password('demo12345'); u.is_staff=True; u.is_superuser=True; u.save()
+org,_=Org.objects.get_or_create(slug='acme', defaults={'name':'Acme Inc'})
+Membership.objects.get_or_create(org=org, user=u, defaults={'role':'owner'})
+print('seeded demo/acme')
+"
 
 echo "▸ systemd service"
 sudo tee /etc/systemd/system/helm.service >/dev/null <<EOF
@@ -63,9 +77,28 @@ sudo systemctl daemon-reload
 sudo systemctl enable helm
 sudo systemctl restart helm
 
-echo "▸ Caddy reverse proxy for https://${HELM_HOST}"
+echo "▸ Caddy: control plane + on-demand TLS for app domains"
+# Control-plane host gets a normal cert. Every other host (the per-deployment
+# *.apps.<domain> hostnames) gets an ON-DEMAND cert, gated by Hull's
+# /deploys/tls/ask allowlist (only active Domains are approved). All hosts proxy
+# to Hull on :8000; Hull's HostProxyMiddleware routes by Host to the right
+# deployment. DNS wildcard *.apps.<domain> must point at this box.
 sudo tee /etc/caddy/Caddyfile >/dev/null <<EOF
+{
+    on_demand_tls {
+        ask http://127.0.0.1:8000/deploys/tls/ask
+    }
+}
+
 ${HELM_HOST} {
+    encode gzip
+    reverse_proxy 127.0.0.1:8000
+}
+
+https:// {
+    tls {
+        on_demand
+    }
     encode gzip
     reverse_proxy 127.0.0.1:8000
 }
