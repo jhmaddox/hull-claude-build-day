@@ -232,18 +232,21 @@ def import_project(name: str, repo_url: str, *, description: str = "", org=None,
         from deploys import services as deploy_svc
         from projects import services as proj_svc
 
-        project_ = proj_svc.import_project(
+        # NB: don't reassign the name ``project`` here — it's the enclosing
+        # parameter (passed as ``project=project`` below). Assigning to it would
+        # make ``project`` function-local and raise UnboundLocalError at that
+        # argument. Use a distinct local (``imported``) for the result.
+        imported = proj_svc.import_project(
             name, repo_url, description=description, org=org, project=project
         )
-        project = project_
-        if project is None:
+        if imported is None:
             return "import returned no project"
         from projects.models import Project
 
-        if project.status == Project.Status.FAILED:
-            return f"import failed: {project.import_log[-500:]}"
+        if imported.status == Project.Status.FAILED:
+            return f"import failed: {imported.import_log[-500:]}"
         deployed = []
-        for env in project.environments.all():
+        for env in imported.environments.all():
             try:
                 # Deploy via the projects wrapper so the import progress stepper's
                 # deploy_staging/deploy_prod steps advance (it calls
@@ -256,7 +259,7 @@ def import_project(name: str, repo_url: str, *, description: str = "", org=None,
                 deployed.append(env.name)
             except Exception as exc:  # noqa: BLE001
                 deployed.append(f"{env.name}=ERR({exc})")
-        return f"imported {project.slug}; deployed: {', '.join(deployed)}"
+        return f"imported {imported.slug}; deployed: {', '.join(deployed)}"
 
     return _run(f"import {name}", _do)
 
