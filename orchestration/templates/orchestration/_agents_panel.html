@@ -1,5 +1,5 @@
 {% load helm_extras %}
-{# Swarm summary tiles + the crew. Org-scoped, fragment is HTMX-polled. [ORCHESTRATION-19] #}
+{% comment %} Swarm summary tiles + the crew. Org-scoped, fragment is HTMX-polled. [ORCHESTRATION-19] {% endcomment %}
 <div class="grid grid-4 mb-16">
   <div class="card stat"><div class="label">Running</div><div class="value warn">{{ tiles.running }}</div></div>
   <div class="card stat"><div class="label">Queued</div><div class="value">{{ tiles.queued }}</div></div>

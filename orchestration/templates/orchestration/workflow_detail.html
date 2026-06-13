@@ -14,7 +14,7 @@
   {% else %}<span class="badge {{ run.status|status_badge }}">{{ run.get_status_display }}</span>{% endif %}
 </div>
 
-{# Linked-entity panel: real <a href> when resolvable, plain text otherwise. [ORC-2] #}
+{% comment %} Linked-entity panel: real <a href> when resolvable, plain text otherwise. [ORC-2] {% endcomment %}
 <div class="card mb-16">
   <div class="row between">
     <div>
@@ -31,8 +31,8 @@
       </div>
     </div>
     <div class="row" style="gap:8px;">
-      {# Manual remediation trigger: only for a firing/acknowledged incident the
-         loop hasn't already taken to resolution. CSRF-protected POST. [ORCHESTRATION-21] #}
+      {% comment %} Manual remediation trigger: only for a firing/acknowledged incident the
+         loop hasn't already taken to resolution. CSRF-protected POST. [ORCHESTRATION-21] {% endcomment %}
       {% if link and link.kind == 'Incident' and link.object.status != 'resolved' and link.object.status != 'remediating' %}
       <form method="post" action="/orchestration/remediate/{{ link.object.pk }}/" style="display:inline;">
         {% csrf_token %}
@@ -44,9 +44,9 @@
   </div>
 </div>
 
-{# Step timeline + inline agent output. HTMX-live while running, stops at terminal.
+{% comment %} Step timeline + inline agent output. HTMX-live while running, stops at terminal.
    The polling trigger lives INSIDE the fragment (_workflow_detail_panel.html), so
    once the run reaches a terminal state the swapped-in markup carries no
-   hx-trigger and polling stops on its own. [ORCHESTRATION-22] #}
+   hx-trigger and polling stops on its own. [ORCHESTRATION-22] {% endcomment %}
 {% include "orchestration/_workflow_detail_panel.html" %}
 {% endblock %}

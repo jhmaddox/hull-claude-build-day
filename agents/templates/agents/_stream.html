@@ -20,7 +20,7 @@
   stops emitting hx-get), so no full-block flash and no oobErrorNoTarget.
 {% endcomment %}
 
-{# --- self-polling status header (self-replaces via outerHTML) --- #}
+{% comment %} --- self-polling status header (self-replaces via outerHTML) --- {% endcomment %}
 <div id="stream"
      {% if run.status == 'queued' or run.status == 'running' %}
      hx-get="{% url 'agents:stream' run.pk %}?since={{ since|default:0 }}"
@@ -43,10 +43,10 @@
 </div>
 
 {% if oob %}
-  {# Poll response: append ONLY the new bytes to the stable sibling #agent-logs. #}
+  {% comment %} Poll response: append ONLY the new bytes to the stable sibling #agent-logs. {% endcomment %}
   {% if delta %}<div id="agent-logs" hx-swap-oob="beforeend">{{ delta }}</div>{% endif %}
 {% else %}
-  {# Initial render: emit the full log body ONCE as a sibling of #stream. #}
+  {% comment %} Initial render: emit the full log body ONCE as a sibling of #stream. {% endcomment %}
   <div class="logs" id="agent-logs">{{ run.output }}{% if not run.output %}<span class="muted" id="agent-logs-empty">waiting for output…</span>{% endif %}</div>
 {% endif %}
 

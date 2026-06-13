@@ -15,7 +15,7 @@
   </div>
 </div>
 
-{# Live, org-scoped swarm view. HTMX-polled (~2s). [ORCHESTRATION-19] #}
+{% comment %} Live, org-scoped swarm view. HTMX-polled (~2s). [ORCHESTRATION-19] {% endcomment %}
 <div id="agents-panel"
      hx-get="/orchestration/agents/panel/"
      hx-trigger="every 2s"

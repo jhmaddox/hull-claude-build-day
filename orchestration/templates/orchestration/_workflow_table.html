@@ -4,9 +4,9 @@
     <tr><th>Workflow</th><th>Status</th><th>Backend</th><th>Project</th><th>Linked</th><th>Detail</th><th>Started</th><th>Duration</th></tr>
   </thead>
   <tbody>
-    {# Sprint/batch grouping: runs sharing a [sprint:tag] collapse under one
+    {% comment %} Sprint/batch grouping: runs sharing a [sprint:tag] collapse under one
        header; ungrouped runs render as plain rows. Falls back to flat `runs`
-       when `groups` is absent. [ORCHESTRATION-23] #}
+       when `groups` is absent. [ORCHESTRATION-23] {% endcomment %}
     {% for g in groups %}
       {% if g.group %}
       <tr class="group-head">

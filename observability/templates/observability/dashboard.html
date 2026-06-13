@@ -16,7 +16,7 @@
   </div>
 </div>
 
-{# Time-window switcher: sets ?window= and reloads (the fragment then polls). #}
+{% comment %} Time-window switcher: sets ?window= and reloads (the fragment then polls). {% endcomment %}
 <div class="row mb-16" style="gap:6px;align-items:center;">
   <span class="muted small">Window:</span>
   {% for w in window_choices %}
@@ -25,6 +25,6 @@
   {% endfor %}
 </div>
 
-{# Live metrics fragment — HTMX polled (hx-get / hx-trigger='every Ns'). #}
+{% comment %} Live metrics fragment — HTMX polled (hx-get / hx-trigger='every Ns'). {% endcomment %}
 {% include "observability/_metrics.html" %}
 {% endblock %}

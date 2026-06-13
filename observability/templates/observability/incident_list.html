@@ -14,7 +14,7 @@
   {% endif %}
 </div>
 
-{# OBS-1: manual "Declare incident" form (toggled). #}
+{% comment %} OBS-1: manual "Declare incident" form (toggled). {% endcomment %}
 <div class="card mb-16" id="declare-card" style="display:none;">
   <div class="card-head"><h2>Declare an incident</h2></div>
   <form method="post" action="/obs/incidents/declare/">

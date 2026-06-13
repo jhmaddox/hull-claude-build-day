@@ -1,7 +1,7 @@
 {% load helm_extras %}
-{# Live-refreshable fragment: step timeline + inline agent output. [ORC-3/4/5]
+{% comment %} Live-refreshable fragment: step timeline + inline agent output. [ORC-3/4/5]
    While the run is RUNNING this wrapper self-polls; on a terminal (done/failed)
-   render it carries NO hx-trigger, so HTMX stops requesting. [ORCHESTRATION-22] #}
+   render it carries NO hx-trigger, so HTMX stops requesting. [ORCHESTRATION-22] {% endcomment %}
 <div id="wf-detail-panel"
      {% if run.status == 'running' %}
      hx-get="/orchestration/{{ run.pk }}/panel/"
@@ -40,4 +40,4 @@
   </div>
 </div>
 {% endif %}
-</div>{# /#wf-detail-panel — self-polling wrapper [ORCHESTRATION-22] #}
+</div>{% comment %} /#wf-detail-panel — self-polling wrapper [ORCHESTRATION-22] {% endcomment %}

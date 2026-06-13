@@ -16,7 +16,7 @@
   </div>
 </div>
 
-{# Crown-jewel loop-health KPIs (org-scoped). Tells the money-shot at a glance. [ORCHESTRATION-20] #}
+{% comment %} Crown-jewel loop-health KPIs (org-scoped). Tells the money-shot at a glance. [ORCHESTRATION-20] {% endcomment %}
 <div class="card mb-16">
   <div class="card-head" style="padding:0 0 12px;">
     <h2>Autonomous loop health</h2>
@@ -41,7 +41,7 @@
   <div class="card stat"><div class="label">Failed</div><div class="value {% if stats.failed %}danger{% endif %}">{{ stats.failed }}</div></div>
 </div>
 
-{# Status + kind filters. Absent params -> unfiltered. [ORC-6] #}
+{% comment %} Status + kind filters. Absent params -> unfiltered. [ORC-6] {% endcomment %}
 <div class="row mb-16" style="gap:8px; flex-wrap:wrap;">
   <a class="pill {% if not active.status and not active.kind %}pill-live{% endif %}" href="/orchestration/">All</a>
   {% for s in status_choices %}

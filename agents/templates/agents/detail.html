@@ -21,16 +21,16 @@
   <div class="card stat"><div class="label">Age</div><div class="value" style="font-size:20px;">{{ run.created_at|timesince }}</div></div>
 </div>
 
-{# Phase / timeline derived from existing fields:
-   queued -> running -> committed -> PR -> done #}
+{% comment %} Phase / timeline derived from existing fields:
+   queued -> running -> committed -> PR -> done {% endcomment %}
 <div class="card mb-16">
   <div class="card-head"><h2>Timeline</h2></div>
   <div class="row gap-8" style="flex-wrap:wrap; align-items:center;">
-    {# Queued — always reached. #}
+    {% comment %} Queued — always reached. {% endcomment %}
     <span class="badge badge-success"><span class="dot"></span>Queued</span>
     <span class="muted">›</span>
 
-    {# Running — started or beyond. #}
+    {% comment %} Running — started or beyond. {% endcomment %}
     {% if run.started_at or run.status == 'running' or run.status == 'done' or run.status == 'failed' %}
       <span class="badge {% if run.status == 'running' %}badge-accent{% else %}badge-success{% endif %}">
         {% if run.status == 'running' %}<span class="spinner"></span>{% else %}<span class="dot"></span>{% endif %}Running
@@ -40,7 +40,7 @@
     {% endif %}
     <span class="muted">›</span>
 
-    {# Committed — a PR exists or the run completed (commit attempted). #}
+    {% comment %} Committed — a PR exists or the run completed (commit attempted). {% endcomment %}
     {% if run.pull_request or run.status == 'done' %}
       <span class="badge badge-success"><span class="dot"></span>Committed</span>
     {% else %}
@@ -48,7 +48,7 @@
     {% endif %}
     <span class="muted">›</span>
 
-    {# PR opened. #}
+    {% comment %} PR opened. {% endcomment %}
     {% if run.pull_request %}
       <span class="badge badge-success"><span class="dot"></span>PR #{{ run.pull_request.number }}</span>
     {% else %}
@@ -56,7 +56,7 @@
     {% endif %}
     <span class="muted">›</span>
 
-    {# Done / Failed terminal. #}
+    {% comment %} Done / Failed terminal. {% endcomment %}
     {% if run.status == 'done' %}
       <span class="badge badge-success"><span class="dot"></span>Done</span>
     {% elif run.status == 'failed' %}

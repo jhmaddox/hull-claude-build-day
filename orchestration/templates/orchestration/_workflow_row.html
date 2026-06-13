@@ -1,5 +1,5 @@
 {% load helm_extras %}
-{# One workflow-run row. Shared by flat + grouped rendering. [ORCHESTRATION-23] #}
+{% comment %} One workflow-run row. Shared by flat + grouped rendering. [ORCHESTRATION-23] {% endcomment %}
 <tr onclick="window.location='/orchestration/{{ r.pk }}/'" style="cursor:pointer;">
   <td>{% if grouped %}<span class="faint">↳ </span>{% endif %}<strong>{{ r.name }}</strong></td>
   <td>

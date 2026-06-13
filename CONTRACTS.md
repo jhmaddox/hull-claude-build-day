@@ -23,6 +23,10 @@ in Hull's own PR/diff UI → CI runs → green → merge → redeploy. Autonomou
 - App templates go in `<app>/templates/<app>/...`. Each app owns its `urls.py`
   (already stubbed with `app_name`). **Never edit `helm/urls.py`, `helm/settings.py`,
   `templates/base.html`, or another app's files.**
+- **Template comments: ALWAYS use `{% comment %}…{% endcomment %}`. Do NOT use
+  `{# … #}`** — Django's `{# #}` only works on a SINGLE line; a multi-line
+  `{# … #}` is NOT parsed as a comment and renders as literal text in the page
+  (a real bug we hit). `{% comment %}` works for both single- and multi-line.
 - Use `core.models.Event.log(verb, project=, actor=, level=, icon=, url=)` to emit
   activity-feed entries at every meaningful step — this is how the demo narrates
   itself. levels: info/success/warning/error. icons: rocket, check, x, deploy,

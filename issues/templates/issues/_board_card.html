@@ -1,6 +1,6 @@
 {% load helm_extras %}
-{# A board card with an inline per-card status select (HTMX, drag-free).
-   Wrapped in an id'd container so set_status can swap it in place. #}
+{% comment %} A board card with an inline per-card status select (HTMX, drag-free).
+   Wrapped in an id'd container so set_status can swap it in place. {% endcomment %}
 <div id="board-card-{{ ticket.pk }}" class="issues-board-card">
   {% include "issues/_ticket_card.html" %}
   <form class="issues-card-status"
