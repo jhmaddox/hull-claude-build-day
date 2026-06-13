@@ -2,7 +2,7 @@ from django.contrib import messages
 from django.db.models import Count, Q, Sum
 from django.shortcuts import get_object_or_404, redirect, render
 
-from accounts.scoping import org_required, scoped
+from accounts.scoping import org_required, visible
 from projects.models import Project
 
 from . import services
@@ -12,7 +12,7 @@ from .models import AgentRun
 @org_required
 def agent_list(request):
     runs = (
-        AgentRun.objects.for_org(request.org)
+        visible(AgentRun, request)
         .select_related("project", "worktree", "pull_request")
     )
 
@@ -39,12 +39,12 @@ def agent_list(request):
 
     ctx = {
         "runs": runs[:100],
-        "running": AgentRun.objects.for_org(request.org)
+        "running": visible(AgentRun, request)
         .filter(status=AgentRun.Status.RUNNING)
         .count(),
         "status_choices": AgentRun.Status.choices,
         "kind_choices": AgentRun.Kind.choices,
-        "projects": scoped(Project, request).order_by("name"),
+        "projects": visible(Project, request).order_by("name"),
         "f_status": status,
         "f_kind": kind,
         "f_project": project,
@@ -55,11 +55,11 @@ def agent_list(request):
 
 @org_required
 def agent_new(request):
-    projects = scoped(Project, request).order_by("name")
+    projects = visible(Project, request).order_by("name")
     if request.method == "POST":
         # Reject launching against a project outside the current org.
         project = get_object_or_404(
-            scoped(Project, request), pk=request.POST.get("project")
+            visible(Project, request), pk=request.POST.get("project")
         )
         kind = request.POST.get("kind") or AgentRun.Kind.FEATURE
         title = (request.POST.get("title") or "").strip()
@@ -87,7 +87,7 @@ def agent_new(request):
 @org_required
 def agent_detail(request, pk):
     run = get_object_or_404(
-        AgentRun.objects.for_org(request.org).select_related(
+        visible(AgentRun, request).select_related(
             "project", "worktree", "pull_request", "incident"
         ),
         pk=pk,
@@ -98,7 +98,7 @@ def agent_detail(request, pk):
 @org_required
 def agent_stream(request, pk):
     """HTMX fragment: just the live-tailing logs block."""
-    run = get_object_or_404(AgentRun.objects.for_org(request.org), pk=pk)
+    run = get_object_or_404(visible(AgentRun, request), pk=pk)
 
     # Support incremental append: client tells us how many bytes it already has.
     try:
@@ -114,7 +114,7 @@ def agent_stream(request, pk):
 @org_required
 def agent_roster(request):
     """Per-kind roster of agent activity for the current org."""
-    runs = AgentRun.objects.for_org(request.org)
+    runs = visible(AgentRun, request)
 
     agg = {
         row["kind"]: row
