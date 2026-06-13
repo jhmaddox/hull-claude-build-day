@@ -491,6 +491,9 @@ def deploy(environment, *, commit_sha: str | None = None, source_path: str | Non
                 "HELM_SCRIPT_NAME": f"/d/{environment.pk}",
                 "HELM_BASE_URL": settings.HELM_BASE_URL,
                 "DJANGO_ALLOWED_HOSTS": "*",
+                # Environment identity so apps can show which env they run in.
+                "HELM_ENV": environment.name,
+                "HELM_PROJECT": environment.project.slug,
             }
         )
         # Inject this environment's configured env-vars / secrets (process

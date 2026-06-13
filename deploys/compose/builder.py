@@ -143,6 +143,10 @@ def build_compose(
         "DATABASE_URL": database_url(),
         "REDIS_URL": redis_url(),
         "PORT": str(container_port),
+        # Environment identity, injected into every deployment so apps can show
+        # which environment they're running in (staging vs prod, etc.).
+        "HELM_ENV": env_name,
+        "HELM_PROJECT": project_slug,
     }
     for k, v in (extra_env or {}).items():
         base_env[k] = v
