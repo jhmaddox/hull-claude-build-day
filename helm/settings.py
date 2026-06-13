@@ -44,6 +44,9 @@ INSTALLED_APPS = [
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
     "whitenoise.middleware.WhiteNoiseMiddleware",
+    # Host-based deployment routing: if the Host matches an active custom Domain,
+    # proxy straight to that deployment (before Hull's session/CSRF/auth).
+    "deploys.middleware.HostProxyMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",

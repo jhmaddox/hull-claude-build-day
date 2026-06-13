@@ -63,6 +63,18 @@ class Environment(OrgScopedModel):
     def public_url(self):
         from django.conf import settings
 
+        # Prefer a real custom hostname (https://<domain>/) when one is active;
+        # fall back to the legacy /d/<pk>/ path proxy (also used by the loop).
+        domain = self.primary_domain
+        if domain is not None:
+            return f"https://{domain.hostname}/"
+        return f"{settings.HELM_BASE_URL.rstrip('/')}/d/{self.pk}/"
+
+    @property
+    def path_url(self):
+        """The legacy /d/<pk>/ path proxy URL (always available fallback)."""
+        from django.conf import settings
+
         return f"{settings.HELM_BASE_URL.rstrip('/')}/d/{self.pk}/"
 
     @property

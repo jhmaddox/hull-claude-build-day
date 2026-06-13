@@ -24,6 +24,32 @@ from django.utils import timezone
 # stored pid instead.
 _PROCS: dict[int, subprocess.Popen] = {}
 
+# Base domain for auto-provisioned per-environment hostnames. The wildcard
+# *.HELM_APPS_DOMAIN must point at this host (DNS) for the hostnames to resolve;
+# Caddy on-demand TLS then issues certs (see deploys.views.tls_ask/host_map).
+HELM_APPS_DOMAIN = os.environ.get("HELM_APPS_DOMAIN", "apps.dev-reservclaims.com")
+
+
+def _ensure_domain(environment):
+    """Give an environment a stable real hostname (idempotent), so it's reachable
+    at https://<project>-<env>.<HELM_APPS_DOMAIN>/ via host-based routing instead
+    of the /d/<pk>/ path. Best-effort: never breaks a deploy."""
+    try:
+        from .models import Domain
+
+        slug = environment.project.slug
+        hostname = f"{slug}-{environment.name}.{HELM_APPS_DOMAIN}".lower()
+        Domain.objects.get_or_create(
+            hostname=hostname,
+            defaults={
+                "environment": environment,
+                "org": getattr(environment, "org", None),
+                "status": Domain.Status.ACTIVE,
+            },
+        )
+    except Exception:  # noqa: BLE001 — provisioning must never fail a deploy
+        pass
+
 
 # ---------------------------------------------------------------------------
 # Ports
@@ -457,6 +483,7 @@ def deploy(environment, *, commit_sha: str | None = None, source_path: str | Non
 
         environment.port = port
         environment.save(update_fields=["port"])
+        _ensure_domain(environment)
 
         Event.log(
             f"deployed {environment.name} live",
@@ -585,6 +612,7 @@ def _deploy_compose(deployment, environment, commit_sha, source_path,
         )
         environment.port = port
         environment.save(update_fields=["port"])
+        _ensure_domain(environment)
 
         Event.log(
             f"deployed {environment.name} live (compose)",
