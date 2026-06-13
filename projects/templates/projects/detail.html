@@ -30,6 +30,9 @@
   {% endif %}
 </div>
 
+<!-- Live import progress stepper (PROJECTS-2); HTMX self-polls while active. -->
+{% if import_steps %}{% include "projects/_import_steps.html" %}{% endif %}
+
 {% if project.status == 'failed' and project.import_log %}
 <div class="card mb-16" style="border-color: rgba(248,113,113,.35);">
   <div class="card-head"><h2 style="color:var(--danger)">Import failed</h2></div>

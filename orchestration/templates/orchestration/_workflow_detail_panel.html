@@ -1,5 +1,14 @@
 {% load helm_extras %}
-{# Live-refreshable fragment: step timeline + inline agent output. [ORC-3/4/5] #}
+{# Live-refreshable fragment: step timeline + inline agent output. [ORC-3/4/5]
+   While the run is RUNNING this wrapper self-polls; on a terminal (done/failed)
+   render it carries NO hx-trigger, so HTMX stops requesting. [ORCHESTRATION-22] #}
+<div id="wf-detail-panel"
+     {% if run.status == 'running' %}
+     hx-get="/orchestration/{{ run.pk }}/panel/"
+     hx-trigger="every 2s"
+     hx-target="#wf-detail-panel"
+     hx-swap="outerHTML"
+     {% endif %}>
 <div class="card pad-0 mb-16">
   <div class="card-head" style="padding:16px 18px 0;"><h2>Steps</h2></div>
   <div style="padding:6px 18px 14px;">
@@ -31,3 +40,4 @@
   </div>
 </div>
 {% endif %}
+</div>{# /#wf-detail-panel — self-polling wrapper [ORCHESTRATION-22] #}

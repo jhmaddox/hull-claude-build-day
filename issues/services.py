@@ -259,6 +259,38 @@ def get_or_create_default_board(org=None, *, name="Backlog", key="HULL"):
     )
 
 
+def advance_tickets_for_merged_pr(pull_request, *, actor="helm"):
+    """When ``pull_request`` merges, move every linked ticket to Done + log.
+
+    Idempotent and loop-safe: finds all tickets whose ``pull_request`` FK points
+    at this PR and, for each not already Done, sets status=Done and logs an
+    Activity. Returns the list of tickets advanced (possibly empty). NEVER raises
+    — it is intended to be called additively off the vcs merge path and must not
+    block a merge or the autonomous incident -> fix loop.
+    """
+    advanced = []
+    try:
+        if pull_request is None:
+            return advanced
+        # Only act on a genuinely merged PR; guard the attr so a stub/None status
+        # is a safe no-op.
+        status = getattr(pull_request, "status", None)
+        if status is not None and status != "merged":
+            return advanced
+        tickets = Ticket.objects.filter(pull_request=pull_request)
+        for ticket in tickets:
+            try:
+                if ticket.status == Ticket.Status.DONE:
+                    continue
+                set_status(ticket, Ticket.Status.DONE, actor=actor)
+                advanced.append(ticket)
+            except Exception:  # noqa: BLE001 — one bad ticket can't break the rest
+                continue
+    except Exception:  # noqa: BLE001 — MUST NEVER raise into the merge path.
+        return advanced
+    return advanced
+
+
 def create_ticket(org, title, **kwargs):
     """Thin alias so agents/other slices can call ``issues.services.create_ticket``.
 

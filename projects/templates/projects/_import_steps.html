@@ -1,0 +1,50 @@
+{% comment %}
+Live import-progress stepper (PROJECTS-2). Self-polls via HTMX (~1.5s) while
+any step is pending/running, then stops once the import settles. Uses only the
+helm.css design-system classes (card, list, badge, dot, spinner).
+{% endcomment %}
+<div id="import-steps"
+     {% if import_active %}hx-get="{% url 'projects:import_steps' project.slug %}"
+     hx-trigger="load delay:1.5s"
+     hx-swap="outerHTML"{% endif %}>
+  {% if import_steps %}
+  <div class="card pad-0 mb-16" style="border-color: rgba(99,102,241,.25);">
+    <div class="card-head" style="padding:16px 18px 0;">
+      <h2>Import progress</h2>
+      {% if import_active %}
+        <span class="badge badge-warn"><span class="spinner" style="width:11px;height:11px;border-width:2px;margin-right:6px;"></span>running</span>
+      {% else %}
+        <span class="badge badge-success"><span class="dot dot-live"></span> settled</span>
+      {% endif %}
+    </div>
+    <div class="list">
+      {% for step in import_steps %}
+      <div class="list-row">
+        {% if step.state == 'done' %}
+          <span class="dot" style="background:var(--success);"></span>
+        {% elif step.state == 'running' %}
+          <span class="spinner"></span>
+        {% elif step.state == 'failed' %}
+          <span class="dot" style="background:var(--danger);"></span>
+        {% else %}
+          <span class="dot" style="background:var(--faint);"></span>
+        {% endif %}
+        <div class="grow">
+          <strong{% if step.state == 'failed' %} style="color:var(--danger);"{% endif %}>{{ step.label }}</strong>
+          {% if step.detail %}<div class="muted small mono" style="word-break:break-all;">{{ step.detail }}</div>{% endif %}
+        </div>
+        {% if step.state == 'done' %}
+          <span class="badge badge-success">done</span>
+        {% elif step.state == 'running' %}
+          <span class="badge badge-warn">running</span>
+        {% elif step.state == 'failed' %}
+          <span class="badge badge-danger">failed</span>
+        {% else %}
+          <span class="badge badge-neutral">pending</span>
+        {% endif %}
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+  {% endif %}
+</div>

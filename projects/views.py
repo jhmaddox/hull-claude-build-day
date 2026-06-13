@@ -153,7 +153,6 @@ def _import_in_background(name, repo_url, description, *, org=None):
     except Exception:  # noqa: BLE001 — fall through to direct path on any error
         pass
 
-    from deploys import services as deploy_services
     from . import services as project_services
 
     project = project_services.import_project(
@@ -161,9 +160,11 @@ def _import_in_background(name, repo_url, description, *, org=None):
     )
     if project.status != Project.Status.READY:
         return
-    for env in project.environments.all():
+    # Deploy staging first, then prod, advancing the live import stepper for
+    # each (deploy_environment wraps deploys.services.deploy additively).
+    for env in sorted(project.environments.all(), key=lambda e: e.name != "staging"):
         try:
-            deploy_services.deploy(env)
+            project_services.deploy_environment(env)
         except Exception:  # noqa: BLE001
             pass
 
@@ -198,6 +199,8 @@ def project_detail(request, slug):
     pull_requests = project.pull_requests.all()[:8]
     incidents = project.incidents.all()[:8]
 
+    import_steps = list(project.import_steps.all())
+
     return render(
         request,
         "projects/detail.html",
@@ -209,6 +212,38 @@ def project_detail(request, slug):
             "pull_requests": pull_requests,
             "incidents": incidents,
             "health": health,
+            "import_steps": import_steps,
+            "import_active": _import_in_progress(import_steps),
+        },
+    )
+
+
+def _import_in_progress(steps):
+    """True while any import step is still pending/running (drives HTMX poll)."""
+    from .models import ImportStep
+
+    active = {ImportStep.State.PENDING, ImportStep.State.RUNNING}
+    return any(s.state in active for s in steps)
+
+
+@org_required
+def import_steps_fragment(request, slug):
+    """HTMX-polled fragment: the live import-progress stepper for a project.
+
+    Org-scoped (404 cross-tenant). Returns just the stepper markup so the detail
+    page can poll it (~1.5s) and animate pending -> running -> done/failed. When
+    no steps are in flight it stops self-polling (the wrapper drops hx-trigger)."""
+    project = get_object_or_404(
+        Project.objects.for_org(request.org), slug=slug
+    )
+    steps = list(project.import_steps.all())
+    return render(
+        request,
+        "projects/_import_steps.html",
+        {
+            "project": project,
+            "import_steps": steps,
+            "import_active": _import_in_progress(steps),
         },
     )
 
@@ -229,10 +264,10 @@ def project_deploy(request, slug, env_pk):
             pass
         except Exception:  # noqa: BLE001
             pass
-        from deploys import services as deploy_services
+        from . import services as project_services
 
         try:
-            deploy_services.deploy(env)
+            project_services.deploy_environment(env)
         except Exception:  # noqa: BLE001
             pass
 

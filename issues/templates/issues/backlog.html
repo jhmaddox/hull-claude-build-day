@@ -11,6 +11,15 @@
 {% block content %}
 <div class="title-xl mb-16">Backlog</div>
 
+<div class="row gap-6 mb-16 issues-status-chips" style="flex-wrap:wrap;">
+  <a class="badge {% if not f.status %}badge-accent{% else %}badge-neutral{% endif %}"
+     href="{% url 'issues:backlog' %}" style="text-decoration:none;">All · {{ total_count }}</a>
+  {% for c in status_chips %}
+  <a class="badge {% if c.active %}badge-accent{% else %}badge-neutral{% endif %}"
+     href="{% url 'issues:backlog' %}?status={{ c.value }}" style="text-decoration:none;">{{ c.label }} · {{ c.count }}</a>
+  {% endfor %}
+</div>
+
 <form method="get" class="card issues-filter-bar mb-16">
   <div class="grid grid-3 gap-8">
     <div class="field">

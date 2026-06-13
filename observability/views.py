@@ -99,6 +99,45 @@ def _clamp_window(params, default=5):
     return min(_ALLOWED_WINDOWS, key=lambda w: abs(w - val))
 
 
+# OBS-14: soft default thresholds for the presentational health banner. Used
+# only when no enabled monitor supplies a tighter bound. Purely cosmetic — opens
+# no incidents and does not touch services.
+_SOFT_ERROR_RATE = 5.0   # percent
+_SOFT_P95_MS = 1000.0    # milliseconds
+
+
+def _health_banner(deployment, rolled):
+    """Compute a presentational health banner for a deployment dashboard.
+
+    Returns a dict ``{level, message}`` where level is 'ok'|'warn'|'danger'.
+    A breach is when current error_rate/p95 exceeds the matching enabled
+    monitor's threshold (if any) or the soft default. Never opens incidents.
+    """
+    error_rate = rolled.get("error_rate") or 0.0
+    p95 = rolled.get("p95")
+
+    err_threshold = _SOFT_ERROR_RATE
+    p95_threshold = _SOFT_P95_MS
+    try:
+        for mon in Monitor.objects.filter(deployment=deployment, enabled=True):
+            if mon.metric == Monitor.Metric.ERROR_RATE:
+                err_threshold = min(err_threshold, mon.threshold)
+            elif mon.metric == Monitor.Metric.P95:
+                p95_threshold = min(p95_threshold, mon.threshold)
+    except Exception:
+        pass
+
+    problems = []
+    if error_rate > err_threshold:
+        problems.append(f"error rate {error_rate}% > {err_threshold}%")
+    if p95 is not None and p95 > p95_threshold:
+        problems.append(f"p95 {p95}ms > {p95_threshold}ms")
+
+    if problems:
+        return {"level": "danger", "message": "Degraded — " + "; ".join(problems)}
+    return {"level": "ok", "message": "Healthy — golden signals within thresholds."}
+
+
 def _dep_dashboard_ctx(deployment, window_minutes=5):
     rolled = services.rollups(deployment, window_minutes=window_minutes)
     req_series = _deployment_metric_series(deployment, "requests")
@@ -108,6 +147,7 @@ def _dep_dashboard_ctx(deployment, window_minutes=5):
         "deployment": deployment,
         "window_minutes": window_minutes,
         "rollups": rolled,
+        "health_banner": _health_banner(deployment, rolled),
         "req_spark": _svg_sparkline(req_series, color="var(--accent)"),
         "err_spark": _svg_sparkline(err_series, color="var(--danger)"),
         "lat_spark": _svg_sparkline(lat_series, color="var(--accent)"),
@@ -193,8 +233,53 @@ def incident_list(request):
     ctx = {
         "incidents": incidents,
         "open_count": incidents.exclude(status=Incident.Status.RESOLVED).count(),
+        "severity_choices": Incident.Severity.choices,
+        "projects": _org_projects(request),
     }
     return render(request, "observability/incident_list.html", ctx)
+
+
+def _org_projects(request):
+    """Projects belonging to the request's org (for the declare form)."""
+    from projects.models import Project
+
+    return Project.objects.for_org(request.org).order_by("name")
+
+
+@org_required
+def incident_declare(request):
+    """OBS-1: manually declare an incident via create_manual_incident.
+
+    POST fields: project, severity, title, message. The project must belong to
+    request.org (else 404). Delegates to the NEW service entry point so the
+    declared incident gets a timeline + (if auto-remediate is on) can kick the
+    loop — identical to auto-detected incidents.
+    """
+    if request.method != "POST":
+        return redirect("observability:incident_list")
+
+    project = get_object_or_404(
+        _org_projects(request), pk=request.POST.get("project") or 0
+    )
+    severity = request.POST.get("severity") or "sev2"
+    title = (request.POST.get("title") or "").strip()
+    message = (request.POST.get("message") or "").strip()
+
+    if not title:
+        messages.error(request, "A title is required to declare an incident.")
+        return redirect("observability:incident_list")
+
+    incident = services.create_manual_incident(
+        project,
+        severity=severity,
+        title=title,
+        message=message,
+        declared_by=request.user.get_username(),
+    )
+    messages.success(
+        request, f"Declared INC-{incident.number}: {incident.title}."
+    )
+    return redirect(incident.get_absolute_url())
 
 
 def _incident_ctx(incident):
@@ -259,6 +344,92 @@ def incident_remediate(request, pk):
             request, f"Remediation dispatched for INC-{incident.number}."
         )
     return redirect(incident.get_absolute_url())
+
+
+def _next_url(request, incident):
+    """Where to redirect after an inline/detail incident action.
+
+    Honours an explicit ?next= (e.g. inline on the list) else the detail page.
+    """
+    nxt = request.POST.get("next") or request.GET.get("next")
+    if nxt and nxt.startswith("/"):
+        return nxt
+    return incident.get_absolute_url()
+
+
+@org_required
+def incident_ack(request, pk):
+    """OBS-10: acknowledge an incident from the UI (status=acknowledged).
+
+    Sets ``acknowledged_at`` and emits a timeline ``core.Event`` (matched by the
+    detail view's ``INC-<number>`` filter). Org-scoped; never auto-resolves.
+    """
+    incident = get_object_or_404(_org_incidents(request), pk=pk)
+    if request.method != "POST":
+        return redirect(_next_url(request, incident))
+
+    if incident.status in (
+        Incident.Status.RESOLVED,
+        Incident.Status.ACKNOWLEDGED,
+    ):
+        messages.error(
+            request, f"INC-{incident.number} is already {incident.get_status_display()}."
+        )
+    else:
+        from django.utils import timezone
+
+        incident.status = Incident.Status.ACKNOWLEDGED
+        incident.acknowledged_at = timezone.now()
+        incident.save(update_fields=["status", "acknowledged_at"])
+        Event.log(
+            f"INC-{incident.number} acknowledged",
+            project=incident.project,
+            actor=request.user.get_username(),
+            level="warning",
+            icon="incident",
+            url=incident.get_absolute_url(),
+        )
+        messages.success(request, f"INC-{incident.number} acknowledged.")
+    return redirect(_next_url(request, incident))
+
+
+@org_required
+def incident_resolve(request, pk):
+    """OBS-10: manually resolve an incident from the UI (status=resolved).
+
+    Sets ``resolved_at`` + emits a timeline ``core.Event``. This is the manual
+    path only — it must NOT go through the monitor recovery code, so it never
+    touches any other incident.
+    """
+    incident = get_object_or_404(_org_incidents(request), pk=pk)
+    if request.method != "POST":
+        return redirect(_next_url(request, incident))
+
+    if incident.status == Incident.Status.RESOLVED:
+        messages.error(request, f"INC-{incident.number} is already resolved.")
+    else:
+        from django.utils import timezone
+
+        incident.status = Incident.Status.RESOLVED
+        incident.resolved_at = timezone.now()
+        incident.save(update_fields=["status", "resolved_at"])
+        Event.log(
+            f"INC-{incident.number} resolved manually",
+            project=incident.project,
+            actor=request.user.get_username(),
+            level="success",
+            icon="check",
+            url=incident.get_absolute_url(),
+        )
+        # Best-effort oncall timeline/postmortem hook (never blocks).
+        try:
+            from oncall.services import loop as _oncall_loop
+
+            _oncall_loop.on_incident_resolved(incident)
+        except Exception as exc:  # noqa: BLE001
+            print(f"[helm-obs] oncall on_incident_resolved hook failed: {exc}")
+        messages.success(request, f"INC-{incident.number} resolved.")
+    return redirect(_next_url(request, incident))
 
 
 # --------------------------------------------------------------------------- #
@@ -330,6 +501,59 @@ def deployment_logs(request, pk):
     if request.headers.get("HX-Request"):
         return render(request, "observability/_logs.html", ctx)
     return render(request, "observability/logs.html", ctx)
+
+
+# Cap export size so a pathological deployment can't stream an unbounded file.
+_LOG_EXPORT_CAP = 10000
+
+
+@org_required
+def deployment_logs_export(request, pk):
+    """OBS-13: stream the currently-filtered logs as CSV.
+
+    Honours the same q/level/status/method/path params as ``deployment_logs``
+    (reusing ``_filter_logs``), org-scoped (cross-org 404), capped at
+    ``_LOG_EXPORT_CAP`` rows. Columns: ts, level, method, path, status_code,
+    latency_ms, message.
+    """
+    import csv
+
+    from django.http import StreamingHttpResponse
+
+    deployment = _get_org_deployment(request, pk)
+    qs = _filter_logs(deployment, request.GET).values_list(
+        "ts", "level", "method", "path", "status_code", "latency_ms", "message"
+    )[:_LOG_EXPORT_CAP]
+
+    class _Echo:
+        def write(self, value):
+            return value
+
+    writer = csv.writer(_Echo())
+    header = (
+        "ts", "level", "method", "path", "status_code", "latency_ms", "message",
+    )
+
+    def _rows():
+        yield writer.writerow(header)
+        for ts, level, method, path, status_code, latency_ms, message in qs:
+            yield writer.writerow(
+                [
+                    ts.isoformat() if ts else "",
+                    level,
+                    method,
+                    path,
+                    status_code if status_code is not None else "",
+                    latency_ms if latency_ms is not None else "",
+                    (message or "").replace("\n", " ").replace("\r", " "),
+                ]
+            )
+
+    resp = StreamingHttpResponse(_rows(), content_type="text/csv")
+    resp["Content-Disposition"] = (
+        f'attachment; filename="helm-logs-deployment-{deployment.pk}.csv"'
+    )
+    return resp
 
 
 # --------------------------------------------------------------------------- #
@@ -519,6 +743,67 @@ def monitor_mute(request, pk):
         )
         messages.success(request, f"Monitor muted for {minutes} minutes.")
     return redirect("observability:monitor_list")
+
+
+@org_required
+def monitor_toggle(request, pk):
+    """OBS-9: POST flip a monitor's ``enabled`` without opening the edit form.
+
+    Org-scoped (cross-org 404), narrated via ``core.Event``. Does NOT touch
+    ``evaluate_monitors`` — a disabled monitor is simply excluded by its
+    ``enabled=True`` filter, and ``live_status()`` reflects the new state.
+    """
+    monitor = get_object_or_404(Monitor.objects.for_org(request.org), pk=pk)
+    if request.method != "POST":
+        return redirect("observability:monitor_list")
+
+    monitor.enabled = not monitor.enabled
+    monitor.save(update_fields=["enabled"])
+    Event.log(
+        f"Monitor {'enabled' if monitor.enabled else 'disabled'}: {monitor}",
+        actor=request.user.get_username(),
+        level="info",
+        icon="alert",
+    )
+    messages.success(
+        request,
+        f"Monitor {'enabled' if monitor.enabled else 'disabled'}.",
+    )
+    return redirect("observability:monitor_list")
+
+
+@org_required
+def monitor_detail(request, pk):
+    """OBS-12: per-monitor detail showing THIS monitor's breach history.
+
+    Lists only MonitorBreach incidents matching this monitor's
+    ``breach_signature`` (open + resolved) so an operator can see flap history.
+    Never shows traceback/suspect_file incidents. Org-scoped via for_org.
+    """
+    monitor = get_object_or_404(
+        Monitor.objects.for_org(request.org).select_related(
+            "deployment__environment__project"
+        ),
+        pk=pk,
+    )
+    breaches = []
+    try:
+        sig = monitor.breach_signature()
+        breaches = list(
+            Incident.objects.filter(
+                error_type="MonitorBreach", signature=sig
+            ).order_by("-created_at")[:25]
+        )
+    except Exception:
+        breaches = []
+    ctx = {
+        "monitor": monitor,
+        "breaches": breaches,
+        "open_breaches": sum(
+            1 for b in breaches if b.status != Incident.Status.RESOLVED
+        ),
+    }
+    return render(request, "observability/monitor_detail.html", ctx)
 
 
 @org_required

@@ -1,0 +1,12 @@
+{
+  "name": "widgetcart",
+  "version": "1.0.0",
+  "description": "A tiny Node sample app — Hull's non-Django generality proof. Zero npm dependencies (built-in http) so it deploys live with no install step.",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

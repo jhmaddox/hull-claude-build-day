@@ -1,0 +1,19 @@
+{% load helm_extras %}
+{# One workflow-run row. Shared by flat + grouped rendering. [ORCHESTRATION-23] #}
+<tr onclick="window.location='/orchestration/{{ r.pk }}/'" style="cursor:pointer;">
+  <td>{% if grouped %}<span class="faint">↳ </span>{% endif %}<strong>{{ r.name }}</strong></td>
+  <td>
+    {% if r.status == 'running' %}<span class="badge badge-warn"><span class="spinner" style="width:10px;height:10px;"></span> Running</span>
+    {% else %}<span class="badge {{ r.status|status_badge }}">{{ r.get_status_display }}</span>{% endif %}
+  </td>
+  <td><span class="badge badge-neutral">{{ r.backend }}</span></td>
+  <td class="muted">{{ r.project.name|default:"—" }}</td>
+  <td>
+    {% if r.link %}
+      <a href="{{ r.link.url }}" onclick="event.stopPropagation();" class="muted small">→ {{ r.link.label }}</a>
+    {% else %}<span class="faint">—</span>{% endif %}
+  </td>
+  <td class="muted small">{{ r.detail|truncatechars:60|default:"—" }}</td>
+  <td class="muted nowrap">{{ r.created_at|timesince }} ago</td>
+  <td class="muted nowrap">{{ r.duration_s|floatformat:1 }}s</td>
+</tr>

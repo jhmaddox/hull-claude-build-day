@@ -1,17 +1,19 @@
 /* Helm design system — premium dark control plane.
    Agents: use these tokens & component classes for visual cohesion. */
 :root {
-  --bg: #0a0c11;
-  --bg-2: #0e1118;
-  --panel: #12151d;
-  --panel-2: #161a24;
-  --border: #20242f;
-  --border-2: #2b303d;
-  --text: #e7eaf1;
-  --muted: #8a92a6;
-  --faint: #5b6376;
-  --accent: #6d8bff;
-  --accent-2: #8a6dff;
+  --bg: #0c0a08;
+  --bg-2: #110e0b;
+  --panel: #17130f;
+  --panel-2: #1d1814;
+  --border: #2a231c;
+  --border-2: #382f26;
+  --text: #f1ece4;
+  --muted: #a69b8a;
+  --faint: #756a5b;
+  --accent: #f0a35a;
+  --accent-2: #e8745a;
+  /* warm accent as rgb channels for translucent fills */
+  --accent-rgb: 240, 163, 90;
   --success: #34d399;
   --warn: #fbbf24;
   --danger: #f87171;
@@ -26,7 +28,7 @@
 * { box-sizing: border-box; }
 html, body { margin: 0; padding: 0; }
 body {
-  background: radial-gradient(1200px 600px at 80% -10%, #14182400, #0a0c11),
+  background: radial-gradient(1200px 600px at 80% -10%, #24190f00, #1f160d22),
               var(--bg);
   color: var(--text);
   font-family: var(--sans);
@@ -67,7 +69,7 @@ code, pre, .mono { font-family: var(--mono); }
 .brand { display: flex; align-items: center; gap: 10px; padding: 4px 8px; }
 .brand-mark {
   font-size: 20px; color: var(--accent);
-  filter: drop-shadow(0 0 12px rgba(109,139,255,.6));
+  filter: drop-shadow(0 0 12px rgba(var(--accent-rgb),.6));
 }
 .brand-name { font-weight: 700; font-size: 18px; letter-spacing: -0.02em; }
 .nav { display: flex; flex-direction: column; gap: 2px; }
@@ -86,7 +88,7 @@ code, pre, .mono { font-family: var(--mono); }
 .topbar {
   display: flex; align-items: center; justify-content: space-between;
   padding: 14px 28px; border-bottom: 1px solid var(--border);
-  background: rgba(10,12,17,.6); backdrop-filter: blur(8px);
+  background: rgba(12,10,8,.6); backdrop-filter: blur(8px);
   position: sticky; top: 0; z-index: 10;
 }
 .crumbs { font-size: 13px; }
@@ -131,7 +133,7 @@ code, pre, .mono { font-family: var(--mono); }
 .badge-warn { color: var(--warn); border-color: rgba(251,191,36,.3); background: rgba(251,191,36,.08); }
 .badge-danger { color: var(--danger); border-color: rgba(248,113,113,.3); background: rgba(248,113,113,.08); }
 .badge-info { color: var(--info); border-color: rgba(56,189,248,.3); background: rgba(56,189,248,.08); }
-.badge-accent { color: var(--accent); border-color: rgba(109,139,255,.3); background: rgba(109,139,255,.08); }
+.badge-accent { color: var(--accent); border-color: rgba(var(--accent-rgb),.3); background: rgba(var(--accent-rgb),.08); }
 .badge-neutral { color: var(--muted); }
 .pill { display: inline-flex; align-items: center; gap: 7px; padding: 4px 10px; border-radius: 999px; font-size: 12px; border: 1px solid var(--border); background: var(--panel); }
 .pill-live { color: var(--success); border-color: rgba(52,211,153,.25); }
@@ -152,7 +154,7 @@ code, pre, .mono { font-family: var(--mono); }
 }
 .btn:hover { border-color: var(--accent); }
 .btn:active { transform: translateY(1px); }
-.btn-primary { background: linear-gradient(180deg, var(--accent), #5a78f0); border-color: transparent; color: #fff; }
+.btn-primary { background: linear-gradient(180deg, var(--accent), var(--accent-2)); border-color: transparent; color: #2a1606; }
 .btn-primary:hover { filter: brightness(1.08); border-color: transparent; }
 .btn-danger { background: rgba(248,113,113,.12); border-color: rgba(248,113,113,.4); color: var(--danger); }
 .btn-success { background: rgba(52,211,153,.12); border-color: rgba(52,211,153,.4); color: var(--success); }
@@ -161,15 +163,40 @@ code, pre, .mono { font-family: var(--mono); }
 .btn[disabled] { opacity: .5; cursor: not-allowed; }
 
 /* ---- forms ---- */
-input[type=text], input[type=url], input[type=number], input[type=password], input[type=email], input[type=search], textarea, select {
+/* Bulletproof: cover typed inputs, bare <input>, and .input/.select opt-in classes
+   so no control ever falls back to an unstyled native box. */
+input[type=text], input[type=url], input[type=number], input[type=password],
+input[type=email], input[type=search], input[type=tel], input[type=date],
+input[type=time], input[type=datetime-local], input[type=month], input[type=week],
+input[type=file], input:not([type]), textarea, select, .input, .select {
   width: 100%; padding: 9px 12px; border-radius: var(--radius-sm);
   background: var(--bg-2); border: 1px solid var(--border-2); color: var(--text);
-  font-family: inherit; font-size: 13.5px;
+  font-family: inherit; font-size: 13.5px; line-height: 1.4;
+  -webkit-appearance: none; appearance: none;
 }
+select, .select { background-image: none; cursor: pointer; }
+/* keep native checkbox/radio rendering (don't strip their appearance) */
+input[type=checkbox], input[type=radio] {
+  width: 15px; height: 15px; -webkit-appearance: auto; appearance: auto;
+  accent-color: var(--accent); vertical-align: middle; cursor: pointer;
+}
+input[type=file] { padding: 7px 10px; cursor: pointer; }
 textarea { font-family: var(--mono); min-height: 90px; resize: vertical; }
-input:focus, textarea:focus, select:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px rgba(109,139,255,.15); }
+::placeholder { color: var(--faint); opacity: 1; }
+input:focus, textarea:focus, select:focus, .input:focus, .select:focus {
+  outline: none; border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(var(--accent-rgb),.15);
+}
+input:disabled, textarea:disabled, select:disabled,
+.input:disabled, .select:disabled { opacity: .55; cursor: not-allowed; }
 label { display: block; font-size: 12px; color: var(--muted); margin-bottom: 5px; font-weight: 500; }
+
+/* ---- form layout helpers (opt-in; harmless on bare inputs) ---- */
 .field { margin-bottom: 14px; }
+.form-row { display: flex; gap: 14px; flex-wrap: wrap; }
+.form-row > * { flex: 1 1 0; min-width: 0; }
+.form-actions { display: flex; gap: 10px; justify-content: flex-end; align-items: center; margin-top: 8px; }
+.field-hint, .help { display: block; color: var(--muted); font-size: 12px; margin-top: 5px; }
 
 /* ---- tables ---- */
 table { width: 100%; border-collapse: collapse; font-size: 13px; }
@@ -228,3 +255,47 @@ pre.code { background: #05070b; border: 1px solid var(--border); border-radius: 
 .link { color: var(--accent); }
 .link:hover { text-decoration: underline; }
 .title-xl { font-size: 26px; font-weight: 700; letter-spacing: -0.02em; }
+
+/* ---- accessibility: visible keyboard focus ---- */
+a:focus-visible, button:focus-visible, .btn:focus-visible,
+.nav-item:focus-visible, .link:focus-visible, [tabindex]:focus-visible,
+summary:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: var(--radius-sm);
+}
+/* inputs already get a ring via :focus; mirror it for focus-visible */
+input:focus-visible, textarea:focus-visible, select:focus-visible,
+.input:focus-visible, .select:focus-visible {
+  outline: none; border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(var(--accent-rgb),.15);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: .001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: .001ms !important;
+    scroll-behavior: auto !important;
+  }
+  .dot-live { animation: none; box-shadow: 0 0 0 2px rgba(52,211,153,.4); }
+}
+
+/* ---- responsive: collapse sidebar/topbar at narrow widths ---- */
+@media (max-width: 760px) {
+  .app { grid-template-columns: 1fr; }
+  .sidebar {
+    position: static; height: auto; flex-direction: row; flex-wrap: wrap;
+    align-items: center; gap: 10px; padding: 10px 12px;
+    border-right: none; border-bottom: 1px solid var(--border);
+  }
+  .sidebar .brand { padding: 4px; }
+  .nav { flex-direction: row; flex-wrap: wrap; gap: 4px; flex: 1; }
+  .nav-item { padding: 6px 8px; font-size: 0; gap: 0; }
+  .nav-item .ico { font-size: 15px; }
+  .nav-item.active { box-shadow: inset 0 -2px 0 var(--accent); }
+  .sidebar-foot { display: none; }
+  .topbar { padding: 12px 16px; }
+  .content { padding: 16px; }
+  .grid-2, .grid-3, .grid-4 { grid-template-columns: 1fr; }
+}

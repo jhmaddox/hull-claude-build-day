@@ -440,3 +440,99 @@ class NoNPlusOneTests(TestCase):
         # Adding 6 projects (each with env+deploy+incident) must not add a
         # per-project burst of queries; allow a tiny constant slack.
         self.assertLessEqual(big - small, 2, (small, big))
+
+
+# --------------------------------------------------------------------------
+# PROJECTS-1: supported-runtime detection + the unsupported-repo gate.
+# --------------------------------------------------------------------------
+
+import os
+import tempfile
+
+from .services import UNSUPPORTED_RUNTIME_MESSAGE
+
+
+def _write(root, rel, content=""):
+    path = os.path.join(root, rel)
+    os.makedirs(os.path.dirname(path), exist_ok=True) if os.path.dirname(rel) else None
+    with open(path, "w", encoding="utf-8") as fh:
+        fh.write(content)
+    return path
+
+
+class DetectRuntimeTests(TestCase):
+    """detect_runtime classifies compose / django / procfile / none."""
+
+    def _tmp(self):
+        d = tempfile.mkdtemp(prefix="hull-detect-")
+        self.addCleanup(lambda: __import__("shutil").rmtree(d, ignore_errors=True))
+        return d
+
+    def test_compose_detected_with_web_service_and_port(self):
+        d = self._tmp()
+        _write(
+            d,
+            "docker-compose.yml",
+            "services:\n"
+            "  web:\n"
+            "    build: .\n"
+            "    ports:\n"
+            '      - "8080:3000"\n'
+            "  db:\n"
+            "    image: postgres\n",
+        )
+        rt = services.detect_runtime(d)
+        self.assertEqual(rt["framework"], "compose")
+        self.assertEqual(rt["web_service"], "web")
+        self.assertEqual(rt["web_port"], 8080)
+
+    def test_compose_wins_over_procfile_and_uses_procfile_fallback_cmd(self):
+        # A repo with BOTH compose + Procfile is classified compose, but the
+        # process-path fallback run_command comes from the Procfile web: line.
+        d = self._tmp()
+        _write(d, "docker-compose.yml", "services:\n  web:\n    image: node\n")
+        _write(d, "Procfile", "web: node server.js\n")
+        rt = services.detect_runtime(d)
+        self.assertEqual(rt["framework"], "compose")
+        self.assertEqual(rt["run_command"], "node server.js")
+
+    def test_procfile_detected(self):
+        d = self._tmp()
+        _write(d, "Procfile", "web: gunicorn app:app\n")
+        rt = services.detect_runtime(d)
+        self.assertEqual(rt["framework"], "procfile")
+        self.assertEqual(rt["run_command"], "gunicorn app:app")
+
+    def test_django_detected(self):
+        d = self._tmp()
+        _write(d, "manage.py", "# manage\n")
+        rt = services.detect_runtime(d)
+        self.assertEqual(rt["framework"], "django")
+        self.assertIn("$PORT", rt["run_command"])
+
+    def test_none_when_no_supported_runtime(self):
+        d = self._tmp()
+        _write(d, "README.md", "just docs\n")
+        rt = services.detect_runtime(d)
+        self.assertEqual(rt["framework"], "none")
+        self.assertEqual(rt["run_command"], "")
+
+
+class UnsupportedRepoGateTests(TestCase):
+    """import_project marks an unsupported repo FAILED with the friendly msg."""
+
+    def test_unsupported_repo_imports_to_failed_with_message(self):
+        d = tempfile.mkdtemp(prefix="hull-gate-src-")
+        self.addCleanup(lambda: __import__("shutil").rmtree(d, ignore_errors=True))
+        _write(d, "README.md", "no runtime here\n")
+
+        project = services.import_project("NoRuntime", d, description="")
+        self.assertEqual(project.status, Project.Status.FAILED)
+        self.assertEqual(project.framework, "none")
+        self.assertIn(UNSUPPORTED_RUNTIME_MESSAGE, project.import_log)
+        # No environments should be created for an unsupported repo.
+        self.assertEqual(project.environments.count(), 0)
+        # The detect step is marked failed in the live stepper.
+        detect = project.import_steps.filter(key="detect").first()
+        self.assertIsNotNone(detect)
+        self.assertEqual(detect.state, "failed")

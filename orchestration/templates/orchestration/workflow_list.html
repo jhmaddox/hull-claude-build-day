@@ -10,8 +10,27 @@
     <div class="muted">The agent org — durable workflows for imports, deploys, CI, and autonomous remediations. {{ running_count }} running.</div>
   </div>
   <div class="row" style="gap:10px;">
+    <a class="btn btn-sm btn-ghost" href="/orchestration/agents/">Agent org →</a>
     <a class="btn btn-sm btn-ghost" href="/orchestration/activity/">Live activity →</a>
     <span class="pill pill-live"><span class="dot dot-live"></span> live</span>
+  </div>
+</div>
+
+{# Crown-jewel loop-health KPIs (org-scoped). Tells the money-shot at a glance. [ORCHESTRATION-20] #}
+<div class="card mb-16">
+  <div class="card-head" style="padding:0 0 12px;">
+    <h2>Autonomous loop health</h2>
+    {% if health.remediating_now %}
+    <span class="badge badge-warn"><span class="dot dot-live"></span> {{ health.remediating_now }} remediating now</span>
+    {% else %}
+    <span class="badge badge-neutral">idle</span>
+    {% endif %}
+  </div>
+  <div class="grid grid-4">
+    <div class="stat"><div class="label">Incidents auto-resolved</div><div class="value success">{{ health.auto_resolved }}</div></div>
+    <div class="stat"><div class="label">Mean time-to-resolve</div><div class="value">{{ health.mttr_label }}</div></div>
+    <div class="stat"><div class="label">Remediation success rate</div><div class="value">{{ health.success_rate }}%</div></div>
+    <div class="stat"><div class="label">Remediating now</div><div class="value {% if health.remediating_now %}warn{% endif %}">{{ health.remediating_now }}</div></div>
   </div>
 </div>
 

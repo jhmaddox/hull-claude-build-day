@@ -1,0 +1,40 @@
+{% load helm_extras %}
+{# Swarm summary tiles + the crew. Org-scoped, fragment is HTMX-polled. [ORCHESTRATION-19] #}
+<div class="grid grid-4 mb-16">
+  <div class="card stat"><div class="label">Running</div><div class="value warn">{{ tiles.running }}</div></div>
+  <div class="card stat"><div class="label">Queued</div><div class="value">{{ tiles.queued }}</div></div>
+  <div class="card stat"><div class="label">Done</div><div class="value success">{{ tiles.done }}</div></div>
+  <div class="card stat"><div class="label">Total cost</div><div class="value">${{ tiles.total_cost|floatformat:2 }}</div></div>
+</div>
+
+<div class="card pad-0">
+  <div class="card-head" style="padding:16px 18px 0;">
+    <h2>Crew</h2>
+    <span class="badge badge-neutral">{{ agent_count }} shown</span>
+  </div>
+  <div class="list">
+    {% for a in agents %}
+    <a class="list-row" href="/agents/{{ a.pk }}/">
+      {% if a.status == 'running' %}
+      <span class="badge badge-warn"><span class="spinner" style="width:10px;height:10px;"></span> {{ a.get_kind_display }}</span>
+      {% else %}
+      <span class="badge {{ a.status|status_badge }}">{{ a.get_kind_display }}</span>
+      {% endif %}
+      <div class="grow">
+        <strong>{{ a.title }}</strong>
+        <div class="muted small">
+          {{ a.project.name|default:"—" }}{% if a.worktree %} · {{ a.worktree.branch }}{% endif %}
+          · {{ a.get_status_display }}
+          {% if a.num_turns %}· {{ a.num_turns }} turns{% endif %}
+          {% if a.cost_usd %}· ${{ a.cost_usd|floatformat:2 }}{% endif %}
+          · {{ a.created_at|timesince }} ago
+        </div>
+        {% if a.result_summary %}<div class="faint small">{{ a.result_summary|truncatechars:120 }}</div>{% endif %}
+      </div>
+      {% if a.status == 'running' %}<span class="dot dot-live"></span>{% endif %}
+    </a>
+    {% empty %}
+    <div class="empty"><div class="big">🤖</div>No agents yet. The crew is idle.</div>
+    {% endfor %}
+  </div>
+</div>

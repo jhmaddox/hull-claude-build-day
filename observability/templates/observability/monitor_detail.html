@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+{% load helm_extras %}
+{% block title %}Monitor — {{ monitor.name|default:monitor.get_metric_display }}{% endblock %}
+{% block crumbs %}<a class="link" href="/obs/">Observability</a> <span class="muted">/</span> <a class="link" href="/obs/monitors/">Monitors</a> <span class="muted">/ {{ monitor.name|default:monitor.get_metric_display }}</span>{% endblock %}
+
+{% block content %}
+<div class="row between mb-16">
+  <div>
+    <div class="row gap-8">
+      <span class="title-xl">{{ monitor.name|default:monitor.get_metric_display }}</span>
+      <span class="pill badge {{ monitor.status_pill_class }}">{{ monitor.status_label }}</span>
+    </div>
+    <div class="muted mono small">{{ monitor.get_metric_display }} {{ monitor.comparator_symbol }} {{ monitor.threshold }} over {{ monitor.window_minutes }}m
+      {% if monitor.deployment %}· {{ monitor.deployment.environment.project.name }}/{{ monitor.deployment.environment.name }}{% else %}· (all deployments){% endif %}</div>
+  </div>
+  <a class="btn btn-ghost" href="/obs/monitors/{{ monitor.pk }}/edit/">Edit</a>
+</div>
+
+<div class="card pad-0">
+  <div class="card-head" style="padding:16px 18px 0;">
+    <h2>Breach history</h2>
+    <span class="muted small">{{ open_breaches }} open · this monitor only</span>
+  </div>
+  <table>
+    <thead>
+      <tr><th>Incident</th><th>Status</th><th>Severity</th><th>Occurrences</th><th>Opened</th><th>Resolved</th></tr>
+    </thead>
+    <tbody>
+      {% for b in breaches %}
+      <tr>
+        <td class="mono"><a class="link" href="{{ b.get_absolute_url }}"><strong>INC-{{ b.number }}</strong></a></td>
+        <td><span class="badge {{ b.status|status_badge }}">{{ b.get_status_display }}</span></td>
+        <td><span class="badge {{ b.severity|status_badge }}">{{ b.get_severity_display }}</span></td>
+        <td>{{ b.occurrences }}</td>
+        <td class="muted nowrap">{{ b.created_at|timesince }} ago</td>
+        <td class="muted nowrap">{% if b.resolved_at %}{{ b.resolved_at|timesince }} ago{% else %}<span class="faint">—</span>{% endif %}</td>
+      </tr>
+      {% empty %}
+      <tr><td colspan="6"><div class="empty"><div class="big">✓</div>No breaches recorded for this monitor.</div></td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

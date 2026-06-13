@@ -4,26 +4,35 @@
     <tr><th>Workflow</th><th>Status</th><th>Backend</th><th>Project</th><th>Linked</th><th>Detail</th><th>Started</th><th>Duration</th></tr>
   </thead>
   <tbody>
-    {% for r in runs %}
-    <tr onclick="window.location='/orchestration/{{ r.pk }}/'" style="cursor:pointer;">
-      <td><strong>{{ r.name }}</strong></td>
-      <td>
-        {% if r.status == 'running' %}<span class="badge badge-warn"><span class="spinner" style="width:10px;height:10px;"></span> Running</span>
-        {% else %}<span class="badge {{ r.status|status_badge }}">{{ r.get_status_display }}</span>{% endif %}
-      </td>
-      <td><span class="badge badge-neutral">{{ r.backend }}</span></td>
-      <td class="muted">{{ r.project.name|default:"—" }}</td>
-      <td>
-        {% if r.link %}
-          <a href="{{ r.link.url }}" onclick="event.stopPropagation();" class="muted small">→ {{ r.link.label }}</a>
-        {% else %}<span class="faint">—</span>{% endif %}
-      </td>
-      <td class="muted small">{{ r.detail|truncatechars:60|default:"—" }}</td>
-      <td class="muted nowrap">{{ r.created_at|timesince }} ago</td>
-      <td class="muted nowrap">{{ r.duration_s|floatformat:1 }}s</td>
-    </tr>
+    {# Sprint/batch grouping: runs sharing a [sprint:tag] collapse under one
+       header; ungrouped runs render as plain rows. Falls back to flat `runs`
+       when `groups` is absent. [ORCHESTRATION-23] #}
+    {% for g in groups %}
+      {% if g.group %}
+      <tr class="group-head">
+        <td colspan="8">
+          <span class="badge badge-accent">sprint</span>
+          <strong>{{ g.tag }}</strong>
+          <span class="muted small">
+            · {{ g.counts.total }} run{{ g.counts.total|pluralize }}
+            {% if g.counts.running %}· {{ g.counts.running }} running{% endif %}
+            {% if g.counts.done %}· {{ g.counts.done }} done{% endif %}
+            {% if g.counts.failed %}· {{ g.counts.failed }} failed{% endif %}
+          </span>
+        </td>
+      </tr>
+        {% for r in g.runs %}
+        {% include "orchestration/_workflow_row.html" with r=r grouped=1 %}
+        {% endfor %}
+      {% else %}
+      {% include "orchestration/_workflow_row.html" with r=g.run grouped=0 %}
+      {% endif %}
     {% empty %}
-    <tr><td colspan="8"><div class="empty"><div class="big">⟳</div>No workflows match.</div></td></tr>
+      {% for r in runs %}
+      {% include "orchestration/_workflow_row.html" with r=r grouped=0 %}
+      {% empty %}
+      <tr><td colspan="8"><div class="empty"><div class="big">⟳</div>No workflows match.</div></td></tr>
+      {% endfor %}
     {% endfor %}
   </tbody>
 </table>

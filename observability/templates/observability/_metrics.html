@@ -3,6 +3,15 @@
      hx-get="/obs/deployment/{{ deployment.pk }}/metrics/?window={{ window_minutes }}"
      hx-trigger="every 5s"
      hx-swap="outerHTML">
+  {# OBS-14: presentational health banner (no incidents opened). #}
+  {% if health_banner %}
+  <div class="card stat mb-16" style="border-color: {% if health_banner.level == 'danger' %}rgba(248,113,113,.35){% else %}rgba(52,211,153,.3){% endif %};">
+    <div class="row gap-8" style="align-items:center;">
+      <span class="badge {% if health_banner.level == 'danger' %}badge-danger{% else %}badge-success{% endif %}">{% if health_banner.level == 'danger' %}● Degraded{% else %}● Healthy{% endif %}</span>
+      <span class="{% if health_banner.level == 'danger' %}value danger{% else %}muted{% endif %}" style="font-size:14px;font-weight:600;">{{ health_banner.message }}</span>
+    </div>
+  </div>
+  {% endif %}
   <div class="muted small mb-8">Showing the last <strong>{{ window_minutes }}m</strong> · auto-refresh 5s</div>
   <div class="grid grid-4 mb-16">
     <div class="card stat">

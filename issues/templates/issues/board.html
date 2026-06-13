@@ -62,7 +62,7 @@
       <span class="badge badge-neutral">{{ tickets|length }}</span>
     </div>
     {% for ticket in tickets %}
-      {% include "issues/_ticket_card.html" %}
+      {% include "issues/_board_card.html" %}
     {% empty %}
       <div class="muted small" style="padding:8px 2px;">—</div>
     {% endfor %}

@@ -12,6 +12,12 @@
       <div class="title-xl">{{ sprint.name }}</div>
     </div>
     {% if sprint.goal %}<div class="muted mt-8">{{ sprint.goal }}</div>{% endif %}
+    <div class="issues-burndown mt-8" style="max-width:360px;">
+      <div class="row between small muted"><span>Progress</span><span>{{ done }}/{{ total }} · {{ done|pct:total }}%</span></div>
+      <div class="progress" style="height:8px;background:rgba(255,255,255,.08);border-radius:6px;overflow:hidden;margin-top:4px;">
+        <div class="progress-bar" style="height:100%;width:{{ done|pct:total }}%;background:var(--accent,#5b8def);border-radius:6px;"></div>
+      </div>
+    </div>
   </div>
   <div class="row gap-8">
     <span class="muted small">{{ done }}/{{ total }} done · {{ done|pct:total }}%</span>

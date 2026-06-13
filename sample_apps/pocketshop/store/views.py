@@ -1,12 +1,19 @@
+import logging
+import random
 import secrets
+import time
 from decimal import Decimal
 
 from django.contrib import messages
+from django.http import JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 
 from .cart import Cart
+from .gifts import gift_wrap_fee
 from .models import Order, OrderItem, Product
 from .promos import PromoError, apply_promo, normalize
+
+logger = logging.getLogger("pocketshop.access")
 
 
 def home(request):
@@ -73,7 +80,14 @@ def checkout(request):
             promo_error = str(exc)
             promo_code = ""
 
-    total = subtotal - discount
+    # Optional gift-wrap add-on (second planted bug — see store/gifts.py).
+    # Triggered by ?gift=1 (querystring) or the gift checkbox on the form.
+    wrap_fee = Decimal("0")
+    gift_wrap = bool(request.POST.get("gift") or request.GET.get("gift"))
+    if gift_wrap:
+        wrap_fee = gift_wrap_fee(lines)
+
+    total = subtotal - discount + wrap_fee
 
     # POST without ?preview means "place order".
     placing_order = request.method == "POST" and request.POST.get("place_order")
@@ -96,11 +110,29 @@ def checkout(request):
             "lines": lines,
             "subtotal": subtotal,
             "discount": discount,
+            "wrap_fee": wrap_fee,
+            "gift_wrap": gift_wrap,
             "total": total,
             "promo_code": promo_code,
             "promo_error": promo_error,
         },
     )
+
+
+def slow(request):
+    """Intentionally slow endpoint so Hull's latency charts get a real tail.
+
+    Sleeps a randomized ~250-600ms, which shows up in the access-log
+    ``latency_ms`` field and gives Hull a visible p95/p99. Returns small JSON
+    so it is cheap to hit repeatedly in a demo loop.
+    """
+    delay = random.uniform(0.25, 0.6)
+    time.sleep(delay)
+    logger.info(
+        "[pocketshop] slow endpoint served after %.1fms (simulated work)",
+        delay * 1000.0,
+    )
+    return JsonResponse({"ok": True, "simulated_delay_ms": round(delay * 1000.0, 1)})
 
 
 def _create_order(*, email, lines, subtotal, discount, total, promo_code):

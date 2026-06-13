@@ -1,0 +1,24 @@
+{% load helm_extras %}
+{# A board card with an inline per-card status select (HTMX, drag-free).
+   Wrapped in an id'd container so set_status can swap it in place. #}
+<div id="board-card-{{ ticket.pk }}" class="issues-board-card">
+  {% include "issues/_ticket_card.html" %}
+  <form class="issues-card-status"
+        hx-post="{% url 'issues:card_status' ticket.pk %}"
+        hx-target="#board-card-{{ ticket.pk }}"
+        hx-swap="outerHTML"
+        method="post"
+        style="margin:-6px 0 10px;">
+    {% csrf_token %}
+    <select name="status" class="issues-card-status-select small"
+            hx-post="{% url 'issues:card_status' ticket.pk %}"
+            hx-target="#board-card-{{ ticket.pk }}"
+            hx-swap="outerHTML"
+            style="width:100%;">
+      {% for value, label in status_choices %}
+      <option value="{{ value }}" {% if ticket.status == value %}selected{% endif %}>{{ label }}</option>
+      {% endfor %}
+    </select>
+    <noscript><button class="btn btn-ghost btn-sm mt-8" type="submit">Move</button></noscript>
+  </form>
+</div>

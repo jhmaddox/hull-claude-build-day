@@ -105,10 +105,32 @@ def backlog(request):
     )
     assignees = User.objects.filter(pk__in=list(assignee_ids))
 
+    # --- Per-status count chips (deep-link the status filter) -------------- #
+    from django.db.models import Count
+
+    raw_counts = dict(
+        scoped(Ticket, request)
+        .values_list("status")
+        .annotate(n=Count("id"))
+    )
+    status_labels = dict(Ticket.Status.choices)
+    status_chips = [
+        {
+            "value": s,
+            "label": status_labels.get(s, s),
+            "count": raw_counts.get(s, 0),
+            "active": f_status == s,
+        }
+        for s, _ in Ticket.Status.choices
+    ]
+    total_count = sum(c["count"] for c in status_chips)
+
     ctx = {
         "tickets": tickets,
         "labels": scoped(Label, request),
         "assignees": assignees,
+        "status_chips": status_chips,
+        "total_count": total_count,
         "status_choices": Ticket.Status.choices,
         "type_choices": Ticket.Type.choices,
         "priority_choices": Ticket.Priority.choices,
@@ -140,8 +162,79 @@ def ticket(request, pk):
         "all_labels": scoped(Label, request),
         "attached_label_ids": attached_label_ids,
         "links": _ticket_links(t),
+        "mentions": _ticket_mentions(t, request),
     }
     return render(request, "issues/ticket.html", ctx)
+
+
+def _ticket_mentions(t, request):
+    """Find org PRs / agent runs that reference this ticket's key (HULL-<n>).
+
+    Returns a list of {"label", "url"} cross-links for PRs whose
+    title/description/diff mentions the key, and agent runs whose
+    title/prompt/output mentions it. Best-effort: a missing app or reverse never
+    500s — it just yields fewer rows.
+    """
+    key = (t.key or "").strip()
+    out = []
+    if not key:
+        return out
+
+    # PRs that mention the key (excluding the directly-linked PR, already shown).
+    try:
+        from django.db.models import Q
+
+        from vcs.models import PullRequest
+
+        prs = (
+            scoped(PullRequest, request)
+            .filter(
+                Q(title__icontains=key)
+                | Q(description__icontains=key)
+                | Q(diff__icontains=key)
+            )
+            .exclude(pk=getattr(t.pull_request, "pk", None) or 0)
+            .distinct()[:20]
+        )
+        for pr in prs:
+            out.append(
+                {
+                    "kind": "pr",
+                    "label": f"PR #{pr.number} · {pr.title}",
+                    "url": _safe_url(pr),
+                }
+            )
+    except Exception:  # noqa: BLE001
+        pass
+
+    # Agent runs that mention the key (excluding the directly-linked run).
+    try:
+        from django.db.models import Q
+
+        from agents.models import AgentRun
+
+        runs = (
+            scoped(AgentRun, request)
+            .filter(
+                Q(title__icontains=key)
+                | Q(prompt__icontains=key)
+                | Q(output__icontains=key)
+            )
+            .exclude(pk=getattr(t.agent_run, "pk", None) or 0)
+            .distinct()[:20]
+        )
+        for r in runs:
+            out.append(
+                {
+                    "kind": "agent",
+                    "label": f"Agent run #{r.pk} · {r.title}",
+                    "url": _agent_run_url(r),
+                }
+            )
+    except Exception:  # noqa: BLE001
+        pass
+
+    return out
 
 
 def _safe_url(obj):
@@ -205,6 +298,27 @@ def set_status(request, pk):
             {"ticket": t, "status_choices": Ticket.Status.choices},
         )
     return redirect("issues:ticket", pk=t.pk)
+
+
+@org_required
+def card_status(request, pk):
+    """Inline board-card status move: POST status → set_status → swap the card.
+
+    Reuses ``services.set_status`` (org-scoped + Activity logged) and returns the
+    re-rendered board card fragment for an in-place HTMX swap (no full reload).
+    """
+    t = get_object_or_404(scoped(Ticket, request), pk=pk)
+    if request.method == "POST":
+        new = request.POST.get("status")
+        valid = {s for s, _ in Ticket.Status.choices}
+        if new in valid and new != t.status:
+            services.set_status(t, new, actor=request.user.get_username())
+            t.refresh_from_db()
+    return render(
+        request,
+        "issues/_board_card.html",
+        {"ticket": t, "status_choices": Ticket.Status.choices},
+    )
 
 
 @org_required
@@ -489,6 +603,80 @@ def ticket_labels(request, pk):
             "updated labels: "
             + (", ".join(label.name for label in org_labels) or "none"),
             actor=request.user.get_username(),
+        )
+    return redirect("issues:ticket", pk=t.pk)
+
+
+# --------------------------------------------------------------------------- #
+# Work this ticket — spawn a builder agent in a fresh worktree (best-effort)
+# --------------------------------------------------------------------------- #
+def _ticket_project(ticket, request):
+    """Best-effort resolve the Project a ticket belongs to (board → project).
+
+    Returns a Project or ``None``. Never raises so the action degrades
+    gracefully when projects/agents aren't wired or the ticket has no board.
+    """
+    project = getattr(getattr(ticket, "board", None), "project", None)
+    if project is not None:
+        return project
+    # Fall back to any single org-scoped project so a board-less ticket can
+    # still be worked when the org owns exactly one project.
+    try:
+        from projects.models import Project
+
+        qs = scoped(Project, request)
+        if qs.count() == 1:
+            return qs.first()
+    except Exception:  # noqa: BLE001
+        return None
+    return None
+
+
+@org_required
+def ticket_work(request, pk):
+    """Spawn a builder agent for this ticket: worktree + launch_agent + link.
+
+    Best-effort and org-scoped. On success flips status to in_progress and
+    links the AgentRun to the ticket. Degrades gracefully (a flash message, no
+    500) when the ticket has no project or agents/projects aren't available.
+    """
+    t = get_object_or_404(scoped(Ticket, request), pk=pk)
+    if request.method != "POST":
+        return redirect("issues:ticket", pk=t.pk)
+
+    project = _ticket_project(t, request)
+    if project is None:
+        messages.error(
+            request,
+            "No project linked to this ticket — set the board's project first.",
+        )
+        return redirect("issues:ticket", pk=t.pk)
+
+    try:
+        from agents.services import launch_agent
+
+        prompt = t.title
+        if t.description:
+            prompt = f"{t.title}\n\n{t.description}"
+        agent_run = launch_agent(
+            project,
+            kind="feature",
+            title=t.title,
+            prompt=prompt,
+            dispatch=True,
+        )
+        services.pick_ticket(
+            t, assignee=request.user, assignee_name=request.user.get_username()
+        )
+        services.link_ticket(
+            t, agent_run=agent_run, actor=request.user.get_username()
+        )
+        messages.success(
+            request, f"Launched builder agent for {t.key}."
+        )
+    except Exception:  # noqa: BLE001 — never 500; the loop/UX must degrade.
+        messages.error(
+            request, "Could not launch an agent for this ticket right now."
         )
     return redirect("issues:ticket", pk=t.pk)
 

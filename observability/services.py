@@ -423,6 +423,101 @@ def open_or_update_incident(
     return incident
 
 
+def create_manual_incident(
+    project,
+    severity: str,
+    title: str,
+    message: str,
+    declared_by=None,
+    deployment=None,
+):
+    """Open a human-declared Incident — same lifecycle as auto-detected ones.
+
+    Reuses ``next_incident_number``, emits the pagerduty-style ``core.Event``,
+    and fires the on-call hook (``oncall.services.loop.on_incident_opened``) so a
+    manual incident shows a timeline and (when auto-remediate is on) can kick the
+    autonomous loop, exactly like a detected incident.
+
+    Additive + loop-safe: this is a NEW entry point — it does NOT touch
+    ``ingest_line`` / ``open_or_update_incident`` (the signatures the loop
+    depends on). ``source`` is stamped ``manual`` and ``declared_by`` recorded.
+    Returns the created Incident.
+    """
+    import os as _os
+
+    from core.models import Event
+
+    from .models import Incident
+
+    severity = (severity or "sev2").strip().lower()
+    if severity not in dict(Incident.Severity.choices):
+        severity = Incident.Severity.SEV2
+    title = (title or "Manual incident").strip()[:300]
+    declared_by = (declared_by or "").strip()[:150]
+
+    # A stable, per-declaration signature so manual incidents never dedupe into
+    # an unrelated auto-detected incident (and each declaration is its own).
+    signature = _compute_signature(
+        "ManualIncident",
+        f"{getattr(project, 'pk', '?')}:{title}:{timezone.now().timestamp()}",
+        "",
+        None,
+    )
+
+    number = next_incident_number(project)
+    incident = Incident.objects.create(
+        project=project,
+        org=getattr(project, "org", None),
+        deployment=deployment,
+        number=number,
+        title=title,
+        severity=severity,
+        status=Incident.Status.FIRING,
+        signature=signature,
+        error_type="ManualIncident",
+        error_message=(message or ""),
+        source=Incident.Source.MANUAL,
+        declared_by=declared_by,
+        occurrences=1,
+    )
+
+    Event.log(
+        f"🚨 INC-{number} {title} (declared{f' by {declared_by}' if declared_by else ''})",
+        project=project,
+        actor=declared_by or "operator",
+        level="error",
+        icon="alert",
+        url=incident.get_absolute_url(),
+    )
+    print(
+        "\n" + "=" * 70 + "\n"
+        f"🚨 PAGERDUTY  INC-{number}  [{severity.upper()}]  {title}  (manual)\n"
+        f"   {message}\n"
+        + "=" * 70
+    )
+
+    # On-call hook: seeds the first-class timeline + routes/pages, exactly like
+    # an auto-detected incident. Best-effort — never blocks the declaration.
+    try:
+        from oncall.services import loop as _oncall_loop
+
+        _oncall_loop.on_incident_opened(incident)
+    except Exception as exc:  # noqa: BLE001 - never let oncall break declaration
+        print(f"[helm-obs] oncall on_incident_opened hook failed: {exc}")
+
+    # Auto-remediation (default on) — same gate the detector uses so a manual
+    # declaration can kick the autonomous loop too.
+    if _os.environ.get("HELM_AUTO_REMEDIATE", "1") == "1":
+        try:
+            from orchestration import service as orch
+
+            orch.remediate(incident.id)
+        except Exception as exc:  # remediation must never break declaration
+            print(f"[helm-obs] manual auto-remediate dispatch failed: {exc}")
+
+    return incident
+
+
 # --------------------------------------------------------------------------- #
 # Metric rollups (additive) — golden signals + nearest-rank percentiles.
 # --------------------------------------------------------------------------- #

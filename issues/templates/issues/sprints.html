@@ -29,6 +29,11 @@
     <a class="list-row" href="{% url 'issues:sprint' r.sprint.pk %}" style="text-decoration:none;">
       <span class="badge {{ r.sprint.status|status_badge }}">{{ r.sprint.get_status_display }}</span>
       <span class="grow" style="font-weight:600;">{{ r.sprint.name }}</span>
+      <span class="issues-burndown" style="width:140px;">
+        <span class="progress" style="display:block;height:8px;background:rgba(255,255,255,.08);border-radius:6px;overflow:hidden;">
+          <span class="progress-bar" style="display:block;height:100%;width:{{ r.done|pct:r.total }}%;background:var(--accent,#5b8def);border-radius:6px;"></span>
+        </span>
+      </span>
       <span class="muted small">{{ r.done }}/{{ r.total }} done</span>
       <span class="kbd">{{ r.done|pct:r.total }}%</span>
     </a>

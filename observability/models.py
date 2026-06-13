@@ -89,6 +89,10 @@ class Incident(models.Model):
         REMEDIATING = "remediating", "Remediating"
         RESOLVED = "resolved", "Resolved"
 
+    class Source(models.TextChoices):
+        AUTO = "auto", "Auto-detected"
+        MANUAL = "manual", "Manually declared"
+
     # Additive nullable org FK; nullable -> loop-safe.
     org = models.ForeignKey(
         "accounts.Org",
@@ -123,6 +127,15 @@ class Incident(models.Model):
     suspect_file = models.CharField(max_length=500, blank=True)
     suspect_line = models.IntegerField(null=True, blank=True)
     occurrences = models.IntegerField(default=1)
+
+    # How this incident came to exist. ``auto`` (the default) is what the
+    # detector / monitor breach path writes; ``manual`` is a human "Declare
+    # incident". Defaulted -> existing rows + the loop are unaffected.
+    source = models.CharField(
+        max_length=10, choices=Source.choices, default=Source.AUTO
+    )
+    # Username of the human who declared a manual incident (blank for auto).
+    declared_by = models.CharField(max_length=150, blank=True)
 
     # The remediation PR an agent produced, if any.
     remediation_pr = models.ForeignKey(

@@ -3,6 +3,10 @@
 {% block title %}{{ ticket.key }} · {{ ticket.title }}{% endblock %}
 {% block crumbs %}<a class="link" href="{% url 'issues:board' %}">Issues</a> <span class="muted">/ {{ ticket.key }}</span>{% endblock %}
 {% block actions %}
+  <form method="post" action="{% url 'issues:ticket_work' ticket.pk %}" style="display:inline;">
+    {% csrf_token %}
+    <button class="btn btn-primary btn-sm" type="submit">Work this ticket</button>
+  </form>
   <a class="btn btn-ghost btn-sm" href="{% url 'issues:ticket_edit' ticket.pk %}">Edit</a>
 {% endblock %}
 
@@ -124,6 +128,7 @@
         <div class="list-row">
           <span class="feed-ico">⑂</span>
           {% if links.pull_request_url %}<a class="link grow" href="{{ links.pull_request_url }}">PR #{{ ticket.pull_request.number }} · {{ ticket.pull_request.title }}</a>{% else %}<span class="grow">PR #{{ ticket.pull_request.number }} · {{ ticket.pull_request.title }}</span>{% endif %}
+          {% if ticket.pull_request.ci_status and ticket.pull_request.ci_status != 'none' %}<span class="badge {{ ticket.pull_request.ci_status|status_badge }}">CI {{ ticket.pull_request.get_ci_status_display }}</span>{% endif %}
           <span class="badge {{ ticket.pull_request.status|status_badge }}">{{ ticket.pull_request.get_status_display }}</span>
         </div>
         {% endif %}
@@ -146,6 +151,20 @@
         {% endif %}
       </div>
     </div>
+
+    {% if mentions %}
+    <div class="card mb-16 issues-mentions">
+      <div class="card-head"><h2>Mentions {{ ticket.key }}</h2><span class="badge badge-neutral">{{ mentions|length }}</span></div>
+      <div class="list pad-0">
+        {% for m in mentions %}
+        <div class="list-row">
+          <span class="feed-ico">{% if m.kind == 'pr' %}⑂{% else %}✦{% endif %}</span>
+          {% if m.url %}<a class="link grow" href="{{ m.url }}">{{ m.label }}</a>{% else %}<span class="grow">{{ m.label }}</span>{% endif %}
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+    {% endif %}
 
     <div class="card issues-activity">
       <div class="card-head"><h2>Activity</h2></div>

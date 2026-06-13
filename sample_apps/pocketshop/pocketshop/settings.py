@@ -49,6 +49,9 @@ INSTALLED_APPS = [
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
     "whitenoise.middleware.WhiteNoiseMiddleware",
+    # Structured per-request access logging (method/path/status/latency) so
+    # Hull's observability.services.ingest_line has real lines to parse.
+    "store.observability.RequestLogMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
@@ -100,6 +103,32 @@ WHITENOISE_USE_FINDERS = True
 
 # --- Sessions (cart lives in the session) -----------------------------------
 SESSION_ENGINE = "django.contrib.sessions.backends.db"
+
+# --- Logging ----------------------------------------------------------------
+# Emit structured access/app logs to stdout so Hull can tail the process and
+# ingest them via observability.services.ingest_line. Levels vary with request
+# status (info / warning / error) to give the dashboards a realistic mix.
+LOGGING = {
+    "version": 1,
+    "disable_existing_loggers": False,
+    "formatters": {
+        "plain": {"format": "%(asctime)s %(levelname)s %(name)s %(message)s"},
+    },
+    "handlers": {
+        "console": {
+            "class": "logging.StreamHandler",
+            "formatter": "plain",
+        },
+    },
+    "loggers": {
+        "pocketshop": {
+            "handlers": ["console"],
+            "level": "INFO",
+            "propagate": False,
+        },
+    },
+    "root": {"handlers": ["console"], "level": "WARNING"},
+}
 
 # --- i18n -------------------------------------------------------------------
 LANGUAGE_CODE = "en-us"

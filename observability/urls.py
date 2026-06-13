@@ -7,6 +7,7 @@ app_name = "observability"
 urlpatterns = [
     path("", views.overview, name="overview"),
     path("incidents/", views.incident_list, name="incident_list"),
+    path("incidents/declare/", views.incident_declare, name="incident_declare"),
     path("incidents/<int:pk>/", views.incident_detail, name="incident_detail"),
     path(
         "incidents/<int:pk>/status/",
@@ -17,6 +18,12 @@ urlpatterns = [
         "incidents/<int:pk>/remediate/",
         views.incident_remediate,
         name="incident_remediate",
+    ),
+    path("incidents/<int:pk>/ack/", views.incident_ack, name="incident_ack"),
+    path(
+        "incidents/<int:pk>/resolve/",
+        views.incident_resolve,
+        name="incident_resolve",
     ),
     # Per-deployment observability.
     path(
@@ -34,11 +41,22 @@ urlpatterns = [
         views.deployment_logs,
         name="deployment_logs",
     ),
+    path(
+        "deployment/<int:pk>/logs/export/",
+        views.deployment_logs_export,
+        name="deployment_logs_export",
+    ),
     # Monitors CRUD.
     path("monitors/", views.monitor_list, name="monitor_list"),
     path("monitors/new/", views.monitor_new, name="monitor_new"),
+    path("monitors/<int:pk>/", views.monitor_detail, name="monitor_detail"),
     path("monitors/<int:pk>/edit/", views.monitor_edit, name="monitor_edit"),
     path("monitors/<int:pk>/mute/", views.monitor_mute, name="monitor_mute"),
+    path(
+        "monitors/<int:pk>/toggle/",
+        views.monitor_toggle,
+        name="monitor_toggle",
+    ),
     path(
         "monitors/<int:pk>/delete/",
         views.monitor_delete,

@@ -9,6 +9,42 @@
     <div class="title-xl">Incidents</div>
     <div class="muted">{{ open_count }} active · auto-detected from production errors, auto-remediated by Claude.</div>
   </div>
+  {% if projects %}
+  <button class="btn btn-primary" type="button" onclick="document.getElementById('declare-card').style.display = document.getElementById('declare-card').style.display==='none' ? 'block' : 'none';">🚨 Declare incident</button>
+  {% endif %}
+</div>
+
+{# OBS-1: manual "Declare incident" form (toggled). #}
+<div class="card mb-16" id="declare-card" style="display:none;">
+  <div class="card-head"><h2>Declare an incident</h2></div>
+  <form method="post" action="/obs/incidents/declare/">
+    {% csrf_token %}
+    <div class="grid grid-3">
+      <div class="field">
+        <div class="label muted small">PROJECT</div>
+        <select name="project" required>
+          {% for p in projects %}<option value="{{ p.pk }}">{{ p.name }}</option>{% endfor %}
+        </select>
+      </div>
+      <div class="field">
+        <div class="label muted small">SEVERITY</div>
+        <select name="severity">
+          {% for value, label in severity_choices %}<option value="{{ value }}" {% if value == 'sev2' %}selected{% endif %}>{{ label }}</option>{% endfor %}
+        </select>
+      </div>
+      <div class="field">
+        <div class="label muted small">TITLE</div>
+        <input type="text" name="title" placeholder="Checkout is down" required>
+      </div>
+    </div>
+    <div class="field">
+      <div class="label muted small">MESSAGE</div>
+      <textarea name="message" rows="3" placeholder="What's happening? Symptoms, impact, anything the agent should know."></textarea>
+    </div>
+    <div class="row" style="gap:8px;">
+      <button class="btn btn-primary" type="submit">Declare incident</button>
+    </div>
+  </form>
 </div>
 
 <div class="card pad-0">
@@ -16,23 +52,37 @@
     <thead>
       <tr>
         <th>Incident</th><th>Severity</th><th>Status</th><th>Title</th>
-        <th>Occurrences</th><th>Project</th><th>Remediation</th><th>Age</th>
+        <th>Occurrences</th><th>Project</th><th>Remediation</th><th>Age</th><th>Actions</th>
       </tr>
     </thead>
     <tbody>
       {% for inc in incidents %}
-      <tr onclick="window.location='{{ inc.get_absolute_url }}'" style="cursor:pointer;">
-        <td class="mono"><strong>INC-{{ inc.number }}</strong></td>
+      <tr>
+        <td class="mono"><a class="link" href="{{ inc.get_absolute_url }}"><strong>INC-{{ inc.number }}</strong></a>{% if inc.source == 'manual' %} <span class="badge badge-neutral small">manual</span>{% endif %}</td>
         <td><span class="badge {{ inc.severity|status_badge }}">{{ inc.get_severity_display }}</span></td>
         <td><span class="badge {{ inc.status|status_badge }}">{{ inc.get_status_display }}</span></td>
-        <td>{{ inc.title }}</td>
+        <td><a class="link" href="{{ inc.get_absolute_url }}">{{ inc.title }}</a></td>
         <td>{{ inc.occurrences }}</td>
         <td class="muted">{{ inc.project.name }}</td>
         <td>{% if inc.remediation_pr %}<a class="link" href="{{ inc.remediation_pr.get_absolute_url }}">PR #{{ inc.remediation_pr.number }}</a>{% else %}<span class="faint">—</span>{% endif %}</td>
         <td class="muted nowrap">{{ inc.created_at|timesince }} ago</td>
+        <td class="nowrap">
+          {% if inc.status != 'resolved' %}
+          {% if inc.status != 'acknowledged' %}
+          <form method="post" action="/obs/incidents/{{ inc.pk }}/ack/" style="display:inline;">
+            {% csrf_token %}<input type="hidden" name="next" value="/obs/incidents/">
+            <button class="btn btn-sm btn-ghost" type="submit">Ack</button>
+          </form>
+          {% endif %}
+          <form method="post" action="/obs/incidents/{{ inc.pk }}/resolve/" style="display:inline;">
+            {% csrf_token %}<input type="hidden" name="next" value="/obs/incidents/">
+            <button class="btn btn-sm btn-ghost" type="submit">Resolve</button>
+          </form>
+          {% else %}<span class="faint">—</span>{% endif %}
+        </td>
       </tr>
       {% empty %}
-      <tr><td colspan="8"><div class="empty"><div class="big">✓</div>No incidents. Production is healthy.</div></td></tr>
+      <tr><td colspan="9"><div class="empty"><div class="big">✓</div>No incidents. Production is healthy.</div></td></tr>
       {% endfor %}
     </tbody>
   </table>

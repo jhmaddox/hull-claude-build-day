@@ -14,11 +14,21 @@
   </div>
   <div class="row gap-8">
     {% if incident.status != 'resolved' %}
+    {% if incident.status != 'acknowledged' %}
+    <form method="post" action="/obs/incidents/{{ incident.pk }}/ack/">
+      {% csrf_token %}
+      <button class="btn btn-ghost" type="submit">✋ Acknowledge</button>
+    </form>
+    {% endif %}
     <form method="post" action="/obs/incidents/{{ incident.pk }}/remediate/">
       {% csrf_token %}
       <button class="btn btn-primary" type="submit" {% if is_remediating %}disabled{% endif %}>
         {% if is_remediating %}<span class="spinner"></span> Remediating…{% else %}🔧 Remediate now{% endif %}
       </button>
+    </form>
+    <form method="post" action="/obs/incidents/{{ incident.pk }}/resolve/">
+      {% csrf_token %}
+      <button class="btn btn-ghost" type="submit">✓ Resolve</button>
     </form>
     {% endif %}
   </div>

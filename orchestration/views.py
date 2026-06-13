@@ -1,4 +1,7 @@
-from django.shortcuts import get_object_or_404, render
+import re
+
+from django.shortcuts import get_object_or_404, redirect, render
+from django.views.decorators.http import require_POST
 
 from accounts.scoping import org_required, scoped
 
@@ -55,6 +58,162 @@ def _decorate(runs, request):
     return out
 
 
+def _loop_health(org):
+    """Crown-jewel autonomous-loop KPIs for ``org``. [ORCHESTRATION-20]
+
+    Returns a dict with four metrics computed from org-scoped Incident +
+    in-process remediation state:
+
+    * ``auto_resolved``   — incidents the loop drove to RESOLVED.
+    * ``mttr_label``      — mean time-to-resolve (acknowledged→resolved), human
+      string ("—" when none).
+    * ``success_rate``    — % of attempted remediations that resolved (resolved
+      vs. attempts that did not), 0–100.
+    * ``remediating_now`` — incidents currently remediating per ``is_remediating``.
+
+    Degrades to zeros/"—" if a table is missing or a query fails. Never raises.
+    """
+    health = {
+        "auto_resolved": 0,
+        "mttr_label": "—",
+        "mttr_seconds": 0,
+        "success_rate": 0,
+        "attempts": 0,
+        "remediating_now": 0,
+    }
+    try:
+        from observability.models import Incident
+
+        incs = Incident.objects.filter(org=org)
+
+        resolved = list(
+            incs.filter(status=Incident.Status.RESOLVED)
+            .exclude(acknowledged_at__isnull=True)
+            .exclude(resolved_at__isnull=True)
+        )
+        health["auto_resolved"] = incs.filter(
+            status=Incident.Status.RESOLVED
+        ).count()
+
+        # MTTR over resolved incidents that carry both timestamps.
+        if resolved:
+            total = sum(
+                (i.resolved_at - i.acknowledged_at).total_seconds()
+                for i in resolved
+            )
+            mttr = total / len(resolved)
+            health["mttr_seconds"] = mttr
+            health["mttr_label"] = _humanize_seconds(mttr)
+
+        # Success rate: resolved vs. all incidents that have been picked up by
+        # the loop (acknowledged at least once). An acknowledged incident that
+        # is not resolved is a failed/incomplete remediation attempt.
+        attempts = incs.exclude(acknowledged_at__isnull=True).count()
+        health["attempts"] = attempts
+        if attempts:
+            health["success_rate"] = round(
+                100.0 * health["auto_resolved"] / attempts
+            )
+
+        # Currently remediating (in-process guard ∪ REMEDIATING status).
+        remediating = 0
+        try:
+            from . import service
+
+            for inc_id in incs.filter(
+                status=Incident.Status.REMEDIATING
+            ).values_list("pk", flat=True):
+                remediating += 1
+            # Also count any guarded-but-not-yet-status-flipped runs in-org.
+            for inc_id in incs.exclude(
+                status=Incident.Status.REMEDIATING
+            ).values_list("pk", flat=True):
+                if service.is_remediating(inc_id):
+                    remediating += 1
+        except Exception:  # noqa: BLE001
+            remediating = incs.filter(
+                status=Incident.Status.REMEDIATING
+            ).count()
+        health["remediating_now"] = remediating
+    except Exception:  # noqa: BLE001 - degrade to zeros if anything is missing
+        pass
+    return health
+
+
+def _humanize_seconds(secs):
+    """Compact human duration ("42s", "7m", "2h 13m")."""
+    try:
+        secs = int(secs)
+    except Exception:  # noqa: BLE001
+        return "—"
+    if secs < 60:
+        return f"{secs}s"
+    mins = secs // 60
+    if mins < 60:
+        return f"{mins}m"
+    hrs = mins // 60
+    rem = mins % 60
+    return f"{hrs}h {rem}m" if rem else f"{hrs}h"
+
+
+# A run's name may carry a sprint/batch tag like "[sprint:auth-v2] feature ...".
+# We derive the grouping from name (no schema change) so a sprint of N feature
+# agents collapses under one header. [ORCHESTRATION-23]
+_SPRINT_RE = re.compile(r"\[(?:sprint|batch)[:=]\s*([^\]]+)\]", re.IGNORECASE)
+
+
+def _sprint_tag(run):
+    """Return a sprint/batch tag for ``run`` or None (ungrouped). Never raises."""
+    try:
+        m = _SPRINT_RE.search(run.name or "")
+        if m:
+            return m.group(1).strip()
+    except Exception:  # noqa: BLE001
+        return None
+    return None
+
+
+def _group_runs(runs):
+    """Group decorated runs into sprint batches, preserving order. [ORCHESTRATION-23]
+
+    Returns a list of dicts: ungrouped rows render as ``{"group": False,
+    "run": <run>}``; runs sharing a sprint tag collapse into one
+    ``{"group": True, "tag": <tag>, "runs": [...], "counts": {...}}`` header
+    placed at the position of the batch's first run. Ungrouped runs are
+    unaffected. Never raises — falls back to all-ungrouped on error.
+    """
+    try:
+        out = []
+        by_tag = {}  # tag -> its group entry (placed at first occurrence)
+        for r in runs:
+            tag = _sprint_tag(r)
+            if not tag:
+                out.append({"group": False, "run": r})
+                continue
+            entry = by_tag.get(tag)
+            if entry is None:
+                entry = {
+                    "group": True,
+                    "tag": tag,
+                    "runs": [],
+                    "counts": {"running": 0, "done": 0, "failed": 0, "total": 0},
+                }
+                by_tag[tag] = entry
+                out.append(entry)  # header sits at the batch's first run
+            entry["runs"].append(r)
+            c = entry["counts"]
+            c["total"] += 1
+            if r.status == WorkflowRun.Status.RUNNING:
+                c["running"] += 1
+            elif r.status == WorkflowRun.Status.DONE:
+                c["done"] += 1
+            elif r.status == WorkflowRun.Status.FAILED:
+                c["failed"] += 1
+        return out
+    except Exception:  # noqa: BLE001
+        return [{"group": False, "run": r} for r in runs]
+
+
 @org_required
 def workflow_list(request):
     """Org-scoped autonomous-build overview + workflow run table."""
@@ -63,6 +222,7 @@ def workflow_list(request):
     base = org_runs.select_related("project")
     filtered, active = _apply_filters(base, request)
     runs = _decorate(_limit(filtered), request)
+    groups = _group_runs(runs)
 
     stats = {
         "total": org_runs.count(),
@@ -83,7 +243,9 @@ def workflow_list(request):
 
     ctx = {
         "runs": runs,
+        "groups": groups,
         "stats": stats,
+        "health": _loop_health(request.org),
         "running_count": stats["running"],
         "active": active,
         "kind_choices": _KIND_CHOICES,
@@ -105,7 +267,7 @@ def workflow_table(request):
     return render(
         request,
         "orchestration/_workflow_table.html",
-        {"runs": runs, "active": active},
+        {"runs": runs, "groups": _group_runs(runs), "active": active},
     )
 
 
@@ -243,3 +405,100 @@ def _activity_context(request):
         "agents": agents,
         "live_count": len(workflows) + len(agents),
     }
+
+
+# --------------------------------------------------------------------------- #
+# Agent-org dashboard [ORCHESTRATION-19]
+# --------------------------------------------------------------------------- #
+def _agents_context(request):
+    """Org-scoped snapshot of the autonomous crew for the dashboard.
+
+    Lists recent + running AgentRuns (org-scoped via for_org) with swarm summary
+    tiles (running/queued/done counts + total cost_usd). Best-effort: if the
+    agents app/table is missing, returns empty tiles and never raises.
+    """
+    agents = []
+    tiles = {"running": 0, "queued": 0, "done": 0, "failed": 0, "total_cost": 0.0}
+    try:
+        from agents.models import AgentRun
+
+        qs = AgentRun.objects.for_org(request.org).select_related(
+            "project", "worktree"
+        )
+        # Summary counts over the whole org (not just the shown page).
+        tiles["running"] = qs.filter(status=AgentRun.Status.RUNNING).count()
+        tiles["queued"] = qs.filter(status=AgentRun.Status.QUEUED).count()
+        tiles["done"] = qs.filter(status=AgentRun.Status.DONE).count()
+        tiles["failed"] = qs.filter(status=AgentRun.Status.FAILED).count()
+        total = 0.0
+        for c in qs.values_list("cost_usd", flat=True):
+            if c:
+                total += c
+        tiles["total_cost"] = round(total, 2)
+
+        # Show running first, then most-recent, capped for the live view.
+        running = list(qs.filter(status=AgentRun.Status.RUNNING)[:50])
+        running_ids = {a.pk for a in running}
+        recent = [
+            a for a in qs.order_by("-created_at")[:60] if a.pk not in running_ids
+        ]
+        agents = running + recent
+    except Exception:  # noqa: BLE001 - dashboard degrades, never 500s
+        agents = []
+    return {"agents": agents, "tiles": tiles, "agent_count": len(agents)}
+
+
+@org_required
+def agents_dashboard(request):
+    """Live, org-scoped view of the autonomous crew. [ORCHESTRATION-19]"""
+    return render(
+        request, "orchestration/agents.html", _agents_context(request)
+    )
+
+
+@org_required
+def agents_panel(request):
+    """HTMX fragment of the agent-org dashboard (org-scoped). [ORCHESTRATION-19]"""
+    return render(
+        request, "orchestration/_agents_panel.html", _agents_context(request)
+    )
+
+
+# --------------------------------------------------------------------------- #
+# Manual remediation trigger [ORCHESTRATION-21]
+# --------------------------------------------------------------------------- #
+@org_required
+@require_POST
+def remediate_incident(request, incident_id):
+    """Kick the autonomous loop for an in-org incident, then redirect to the run.
+
+    Org-scoped + CSRF-protected (POST). Honors the per-incident re-entrancy
+    guard: a double-click yields a single run (``service.remediate`` returns
+    None for the second call, so we redirect to the most-recent run for that
+    incident instead of starting another). A cross-org incident -> 404.
+    [ORCHESTRATION-21]
+    """
+    from observability.models import Incident
+
+    # Scope strictly to request.org so a foreign-org incident is a 404.
+    inc = get_object_or_404(
+        Incident.objects.filter(org=request.org), pk=incident_id
+    )
+
+    from . import service
+
+    run = service.remediate(inc.pk)
+    if run is not None:
+        return redirect("orchestration:workflow_detail", pk=run.pk)
+
+    # Already remediating (guard) or no project — land on the live run if any.
+    existing = (
+        WorkflowRun.objects.for_org(request.org)
+        .filter(ref_type="incident", ref_id=inc.pk)
+        .order_by("-created_at")
+        .first()
+    )
+    if existing is not None:
+        return redirect("orchestration:workflow_detail", pk=existing.pk)
+    # Nothing to show (e.g. incident vanished) — back to the index.
+    return redirect("orchestration:workflow_list")

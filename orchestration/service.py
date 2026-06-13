@@ -37,7 +37,8 @@ def _temporal_available() -> bool:
         return False
 
 
-def _run(name, fn, *, project=None, ref_type="", ref_id=None, temporal=None):
+def _run(name, fn, *, project=None, ref_type="", ref_id=None, temporal=None,
+         on_done=None):
     """Create a WorkflowRun, run ``fn`` in the background, record the outcome.
 
     ``fn`` is a zero-arg callable that performs the actual work (thread path).
@@ -47,6 +48,12 @@ def _run(name, fn, *, project=None, ref_type="", ref_id=None, temporal=None):
     visible in Temporal Cloud. If Temporal is unavailable or the start fails, we
     fall back to running ``fn`` on a daemon thread. The WorkflowRun + a
     core.Event are updated on completion / failure.
+
+    ``on_done`` (optional): a zero-arg callable invoked once the run reaches a
+    terminal state, on EITHER the threaded OR the Temporal path. Used e.g. by
+    ``remediate`` to release its per-incident re-entrancy lock so the durable
+    path (where ``fn`` runs in a remote worker, not here) can't leak it. Wrapped
+    so a failing callback never disturbs the loop.
 
     Returns the WorkflowRun immediately.
     """
@@ -143,6 +150,11 @@ def _run(name, fn, *, project=None, ref_type="", ref_id=None, temporal=None):
                 icon="x",
             )
         finally:
+            if on_done is not None:
+                try:
+                    on_done()
+                except Exception:  # noqa: BLE001 - callback must never break loop
+                    pass
             from django.db import connection
 
             connection.close()
@@ -173,6 +185,7 @@ def _run(name, fn, *, project=None, ref_type="", ref_id=None, temporal=None):
             )
             return await handle.result()
 
+        ran_fallback = False
         try:
             result = asyncio.run(_go())
             wf.status = WorkflowRun.Status.DONE
@@ -185,8 +198,16 @@ def _run(name, fn, *, project=None, ref_type="", ref_id=None, temporal=None):
             Event.log(f"Temporal dispatch unavailable ({exc}); running locally",
                       project=project, actor="orchestrator", level="warning", icon="deploy")
             WorkflowRun.objects.filter(pk=wf.pk).update(backend="thread")
-            _body()
+            ran_fallback = True
+            _body()  # _body's finally already invokes on_done -> don't double-call
         finally:
+            # On the Temporal success path _body never ran, so fire on_done here
+            # (the fallback path already fired it inside _body's finally).
+            if on_done is not None and not ran_fallback:
+                try:
+                    on_done()
+                except Exception:  # noqa: BLE001
+                    pass
             from django.db import connection as _c
             _c.close()
 
@@ -479,11 +500,15 @@ def remediate(incident_id: int):
         return None
 
     def _do():
-        try:
-            return _remediate_pipeline(incident_id)
-        finally:
-            with _REMEDIATE_LOCK:
-                _REMEDIATING_INCIDENTS.discard(incident_id)
+        return _remediate_pipeline(incident_id)
+
+    def _release():
+        # Release the per-incident re-entrancy lock once the run is terminal.
+        # Fires on BOTH the threaded and Temporal paths via _run(on_done=...),
+        # so the durable path (where _do runs in a remote worker, not here)
+        # can't leak the lock and wedge future remediations.
+        with _REMEDIATE_LOCK:
+            _REMEDIATING_INCIDENTS.discard(incident_id)
 
     return _run(
         f"remediate incident #{incident_id}",
@@ -491,6 +516,8 @@ def remediate(incident_id: int):
         project=project,
         ref_type="incident",
         ref_id=incident_id,
+        temporal=("RemediateWorkflow", [incident_id]),
+        on_done=_release,
     )
 
 

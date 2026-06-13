@@ -57,3 +57,52 @@ class Project(OrgScopedModel):
         from django.urls import reverse
 
         return reverse("projects:detail", args=[self.slug])
+
+
+# Canonical ordered import phases surfaced as a live stepper (PROJECTS-2).
+IMPORT_STEPS = [
+    ("clone", "Clone"),
+    ("detect", "Detect runtime"),
+    ("verify", "Verify environment"),
+    ("provision", "Provision domain"),
+    ("deploy_staging", "Deploy staging"),
+    ("deploy_prod", "Deploy prod"),
+]
+
+
+class ImportStep(models.Model):
+    """One ordered phase of a project's import, rendered as a live stepper.
+
+    The import flow (``projects.services``) creates these for a project and
+    flips their ``state`` as each phase runs, so an HTMX-polled fragment can
+    animate pending -> running -> done/failed in real time. Org scoping is
+    inherited from the parent ``Project`` (these rows are never queried directly
+    cross-tenant — always via a project already resolved through
+    ``Project.objects.for_org``).
+    """
+
+    class State(models.TextChoices):
+        PENDING = "pending", "Pending"
+        RUNNING = "running", "Running"
+        DONE = "done", "Done"
+        FAILED = "failed", "Failed"
+
+    project = models.ForeignKey(
+        Project, on_delete=models.CASCADE, related_name="import_steps"
+    )
+    key = models.CharField(max_length=40)
+    label = models.CharField(max_length=80)
+    order = models.IntegerField(default=0)
+    state = models.CharField(
+        max_length=20, choices=State.choices, default=State.PENDING
+    )
+    detail = models.CharField(max_length=500, blank=True)
+    started_at = models.DateTimeField(null=True, blank=True)
+    ended_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ["project", "order"]
+        unique_together = [("project", "key")]
+
+    def __str__(self):
+        return f"{self.project.slug}/{self.key}={self.state}"

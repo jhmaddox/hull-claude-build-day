@@ -390,3 +390,65 @@ class AgentBacklogTests(TestCase):
         self.assertEqual(r.status_code, 200)
         self.assertContains(r, "agent filed")
         self.assertNotContains(r, "foreign agent")
+
+
+class AutoAdvanceOnMergeTests(TestCase):
+    """[ISSUES-11] merging a ticket's linked PR auto-advances it to Done.
+
+    Verifies the end-to-end wiring: the issues app's own post_save receiver on
+    vcs.PullRequest fires advance_tickets_for_merged_pr whenever a PR is saved as
+    merged, so the acceptance holds through ANY merge path without editing vcs.
+    """
+
+    def setUp(self):
+        from projects.models import Project
+        from vcs.models import PullRequest
+
+        self.org = Org.objects.create(name="O", slug="o")
+        self.project = Project.objects.create(name="P", slug="p", org=self.org)
+        self.pr = PullRequest.objects.create(
+            org=self.org,
+            project=self.project,
+            number=1,
+            title="Fix the bug",
+            head_branch="fix-bug",
+            base_branch="main",
+            status=PullRequest.Status.OPEN,
+        )
+        self.ticket = services.file_ticket(
+            "ticket with a PR", org=self.org, pull_request=self.pr,
+        )
+
+    def test_open_pr_save_does_not_advance(self):
+        # A non-merged save is a no-op (status guard).
+        self.pr.title = "still open"
+        self.pr.save()
+        self.ticket.refresh_from_db()
+        self.assertNotEqual(self.ticket.status, Ticket.Status.DONE)
+
+    def test_merging_pr_advances_linked_ticket_to_done(self):
+        from vcs.models import PullRequest
+
+        before = Activity.objects.filter(ticket=self.ticket).count()
+        self.pr.status = PullRequest.Status.MERGED
+        self.pr.save()  # post_save receiver fires the fail-soft advance
+        self.ticket.refresh_from_db()
+        self.assertEqual(self.ticket.status, Ticket.Status.DONE)
+        # Activity logged for the transition.
+        self.assertGreater(
+            Activity.objects.filter(ticket=self.ticket).count(), before
+        )
+
+    def test_merge_is_idempotent(self):
+        from vcs.models import PullRequest
+
+        self.pr.status = PullRequest.Status.MERGED
+        self.pr.save()
+        self.ticket.refresh_from_db()
+        self.assertEqual(self.ticket.status, Ticket.Status.DONE)
+        mid = Activity.objects.filter(ticket=self.ticket).count()
+        # Saving the already-merged PR again must not re-log or re-transition.
+        self.pr.save()
+        self.assertEqual(
+            Activity.objects.filter(ticket=self.ticket).count(), mid
+        )

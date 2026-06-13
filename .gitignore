@@ -11,3 +11,4 @@ staticfiles/
 node_modules/
 .tool-versions
 .env.helm.local
+docs/.obsidian/

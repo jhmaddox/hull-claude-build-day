@@ -10,7 +10,21 @@
     <div class="muted">{{ deployment.environment.project.name }} / {{ deployment.environment.name }}
       · <span class="mono">{{ deployment.commit_sha|slice:":8" }}</span></div>
   </div>
-  <a class="btn btn-ghost" href="/obs/deployment/{{ deployment.pk }}/">📊 Dashboard</a>
+  <div class="row" style="gap:8px;">
+    <a class="btn btn-ghost" href="/obs/deployment/{{ deployment.pk }}/logs/export/{% if querystring %}?{{ querystring }}{% endif %}">⤓ Export CSV</a>
+    <a class="btn btn-ghost" href="/obs/deployment/{{ deployment.pk }}/">📊 Dashboard</a>
+  </div>
+</div>
+
+{# OBS-11: saved log view quick-filter chips (HTMX-free links; carry params). #}
+<div class="row mb-16 wrap" style="gap:6px;align-items:center;">
+  <span class="muted small">Quick filters:</span>
+  <a class="btn btn-sm btn-ghost" href="/obs/deployment/{{ deployment.pk }}/logs/">All</a>
+  <a class="btn btn-sm btn-ghost" href="/obs/deployment/{{ deployment.pk }}/logs/?status=5xx">5xx only</a>
+  <a class="btn btn-sm btn-ghost" href="/obs/deployment/{{ deployment.pk }}/logs/?status=4xx">4xx</a>
+  <a class="btn btn-sm btn-ghost" href="/obs/deployment/{{ deployment.pk }}/logs/?level=error">Errors</a>
+  <a class="btn btn-sm btn-ghost" href="/obs/deployment/{{ deployment.pk }}/logs/?level=warning">Warnings</a>
+  <a class="btn btn-sm btn-ghost" href="/obs/deployment/{{ deployment.pk }}/logs/?q=Traceback">Tracebacks</a>
 </div>
 
 <div class="card mb-16">

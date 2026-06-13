@@ -1,0 +1,19 @@
+# WidgetCart — Docker Compose deploy stack for Hull (non-Django generality proof).
+#
+# A single `web` service that builds the image and binds $PORT. The app uses
+# only Node's built-in http module, so there is no install/build step and it
+# comes up instantly.
+#
+#   PORT=8031 docker compose up --build
+services:
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: widgetcart:latest
+    environment:
+      # Hull injects PORT per-environment; sensible local default below.
+      PORT: "${PORT:-8000}"
+    ports:
+      - "${PORT:-8000}:${PORT:-8000}"
+    restart: unless-stopped

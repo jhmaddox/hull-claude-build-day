@@ -48,11 +48,14 @@ class RuntimeDetectionTests(TestCase):
         self.assertEqual(rt["framework"], "procfile")
         self.assertIn("gunicorn", rt["run_command"])
 
-    def test_generic_fallback(self):
+    def test_unsupported_runtime_returns_none(self):
+        # Sprint 3 contract: import requires a declared runtime
+        # (compose / Django / Procfile). A repo declaring none of these is
+        # gated to FAILED rather than getting an AI-generated fallback.
         from projects.services import detect_runtime
 
         rt = detect_runtime(self._mk({"index.html": "<h1>hi</h1>"}))
-        self.assertEqual(rt["framework"], "generic")
+        self.assertEqual(rt["framework"], "none")
 
 
 class EnvIsolationTests(TestCase):

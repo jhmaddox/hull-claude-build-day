@@ -18,11 +18,16 @@
     <div class="list-row">
       <span class="badge {{ m.severity|status_badge }}">{{ m.get_severity_display }}</span>
       <div class="grow">
-        <strong>{{ m.name|default:m.get_metric_display }}</strong>
+        <strong><a class="link" href="/obs/monitors/{{ m.pk }}/">{{ m.name|default:m.get_metric_display }}</a></strong>
         <div class="muted small mono">{{ m.get_metric_display }} {{ m.comparator_symbol }} {{ m.threshold }} over {{ m.window_minutes }}m
           {% if m.deployment %}· {{ m.deployment.environment.project.name }}/{{ m.deployment.environment.name }}{% else %}· (all deployments){% endif %}</div>
       </div>
       <span class="pill badge {{ m.status_pill_class }}" title="live status">{{ m.status_label }}</span>
+      {# OBS-9: inline enable/disable toggle (no edit form). #}
+      <form method="post" action="/obs/monitors/{{ m.pk }}/toggle/" style="display:inline;">
+        {% csrf_token %}
+        <button class="btn btn-sm btn-ghost" type="submit" title="Toggle enabled">{% if m.enabled %}Disable{% else %}Enable{% endif %}</button>
+      </form>
       {% if m.is_muted %}
       <form method="post" action="/obs/monitors/{{ m.pk }}/mute/" style="display:inline;">
         {% csrf_token %}<input type="hidden" name="minutes" value="0">

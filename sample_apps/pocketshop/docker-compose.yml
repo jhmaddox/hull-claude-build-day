@@ -1,0 +1,37 @@
+# PocketShop — Docker Compose deploy stack for Hull.
+#
+# A single `web` service that builds the image, migrates+seeds on start, and
+# binds $PORT. This matches the roadmap's Projects/Environments "Docker Compose
+# per env" bar while keeping the plain-process run (README "Run it") working as
+# a fallback.
+#
+#   PORT=8021 docker compose up --build
+#
+# SQLite lives on a named volume so data survives container restarts. The
+# planted bug and seed catalog behave identically to the process run.
+services:
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: pocketshop:latest
+    environment:
+      # Hull injects these per-environment; sensible local defaults below.
+      PORT: "${PORT:-8000}"
+      POCKETSHOP_DEBUG: "${POCKETSHOP_DEBUG:-1}"
+      POCKETSHOP_SECRET_KEY: "${POCKETSHOP_SECRET_KEY:-django-insecure-pocketshop-demo-key-not-for-production}"
+      # Reverse-proxy subpath / CSRF, set by Hull when serving behind /d/<env_pk>/.
+      HELM_SCRIPT_NAME: "${HELM_SCRIPT_NAME:-}"
+      HELM_BASE_URL: "${HELM_BASE_URL:-}"
+      # collectstatic is optional (WhiteNoise serves from source); flip to 1
+      # for a true production static build.
+      POCKETSHOP_COLLECTSTATIC: "${POCKETSHOP_COLLECTSTATIC:-0}"
+    ports:
+      - "${PORT:-8000}:${PORT:-8000}"
+    volumes:
+      # Persist the SQLite database across restarts.
+      - pocketshop_data:/app/data
+    restart: unless-stopped
+
+volumes:
+  pocketshop_data:
