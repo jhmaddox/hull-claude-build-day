@@ -11,6 +11,7 @@ from django.urls import include, path
 urlpatterns = [
     path("admin/", admin.site.urls),
     path("", include("deploys.proxy_urls")),  # /d/<env_pk>/... reverse proxy
+    path("accounts/", include("accounts.urls")),
     path("", include("core.urls")),
     path("projects/", include("projects.urls")),
     path("deploys/", include("deploys.urls")),

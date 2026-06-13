@@ -1,0 +1,14 @@
+{% extends "base.html" %}
+{% block title %}Create an org{% endblock %}
+{% block content %}
+<div style="max-width:380px;margin:8vh auto;">
+  <div class="card">
+    <h1 class="mb-8">Create your organization</h1>
+    <div class="muted small mb-16">You're not a member of any org yet.</div>
+    <form method="post" action="{% url 'accounts:onboarding' %}">{% csrf_token %}
+      <div class="field"><label>Organization name</label><input type="text" name="org_name" autofocus></div>
+      <button class="btn btn-primary" style="width:100%">Create org</button>
+    </form>
+  </div>
+</div>
+{% endblock %}

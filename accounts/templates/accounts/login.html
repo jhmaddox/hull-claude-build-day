@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+{% block title %}Sign in{% endblock %}
+{% block content %}
+<div style="max-width:380px;margin:8vh auto;">
+  <div class="card">
+    <h1 class="mb-8">Sign in to {{ HELM_PRODUCT }}</h1>
+    <div class="muted small mb-16">{{ HELM_TAGLINE }}</div>
+    <form method="post" action="{% url 'accounts:login' %}">{% csrf_token %}
+      <div class="field"><label>Username</label><input type="text" name="username" autofocus></div>
+      <div class="field"><label>Password</label><input type="password" name="password"></div>
+      <button class="btn btn-primary" style="width:100%">Sign in</button>
+    </form>
+    <div class="muted small mt-16">No account? <a class="link" href="{% url 'accounts:signup' %}">Create one</a></div>
+  </div>
+</div>
+{% endblock %}
