@@ -299,13 +299,17 @@ def _tee_compose_logs(deployment_pk, app_dir, compose_path, project_name, log_pa
     by pk each line so it's safe across threads. Best-effort."""
     from observability import services as obs
 
-    cmd = [
-        "docker", "compose", "-p", project_name, "-f", compose_path,
-        "logs", "-f", "--no-color", "--no-log-prefix", "--tail", "0",
-    ]
+    # The `-p` project name alone identifies the running stack, so we can tail
+    # even when adopting a deployment whose compose file/app dir we don't have
+    # handy (e.g. after a restart). Include `-f` only when the file exists.
+    cmd = ["docker", "compose", "-p", project_name]
+    if compose_path and os.path.isfile(compose_path):
+        cmd += ["-f", compose_path]
+    cmd += ["logs", "-f", "--no-color", "--no-log-prefix", "--tail", "0"]
     try:
         proc = subprocess.Popen(
-            cmd, cwd=app_dir, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+            cmd, cwd=(app_dir if app_dir and os.path.isdir(app_dir) else None),
+            stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
             text=True, bufsize=1,
         )
     except Exception:  # noqa: BLE001
@@ -323,6 +327,41 @@ def _tee_compose_logs(deployment_pk, app_dir, compose_path, project_name, log_pa
                 except Exception:  # noqa: BLE001
                     pass
     except Exception:  # noqa: BLE001
+        pass
+
+
+_COMPOSE_TAIL_LOCK = threading.Lock()
+
+
+def ensure_compose_log_tail(deployment) -> None:
+    """Idempotently ensure a ``docker compose logs -f`` tee is feeding
+    observability ingestion for a live compose deployment.
+
+    Adoption-safe: the deploy-time tee dies with whatever process spawned it
+    (a one-shot management command, or a restarted server), so the long-lived
+    web server calls this (via ``tailer.ensure_tailers``) to re-attach. Tails by
+    compose project name, so it needs no compose file on disk. Best-effort."""
+    try:
+        from .compose.runtime import compose_project_name
+
+        env = deployment.environment
+        pname = compose_project_name(env.project.slug, env.name)
+        key = f"compose-logs-{deployment.pk}"
+        with _COMPOSE_TAIL_LOCK:
+            proc = _PROCS.get(key)
+            if proc is not None and proc.poll() is None:
+                return  # already tailing in this process
+            log_path = deployment.log_path or os.path.join(
+                str(settings.HELM_LOGS_DIR), f"deploy-{deployment.pk}.log"
+            )
+            compose_path = getattr(deployment, "compose_path", None)
+            app_dir = os.path.dirname(compose_path) if compose_path else None
+            threading.Thread(
+                target=_tee_compose_logs,
+                args=(deployment.pk, app_dir, compose_path, pname, log_path),
+                daemon=True,
+            ).start()
+    except Exception:  # noqa: BLE001 — adoption must never break a request
         pass
 
 

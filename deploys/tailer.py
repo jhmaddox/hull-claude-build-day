@@ -107,9 +107,24 @@ def start_tailer(deployment, *, from_start: bool = True):
 
 
 def ensure_tailers():
-    """Adopt every currently-live deployment (called by the web server)."""
-    from .models import Deployment
+    """Adopt every currently-live deployment (called by the web server).
 
-    for dep in Deployment.objects.filter(status=Deployment.Status.LIVE):
-        if dep.log_path:
+    Process deployments are tailed from their log *file*; compose deployments
+    need a ``docker compose logs -f`` tee instead (their container output isn't
+    written to that file by anyone else), so route by runtime."""
+    from .models import Deployment, Environment
+
+    live = Deployment.objects.filter(
+        status=Deployment.Status.LIVE
+    ).select_related("environment")
+    for dep in live:
+        runtime = getattr(dep.environment, "runtime", None)
+        if runtime == Environment.Runtime.COMPOSE:
+            try:
+                from . import services
+
+                services.ensure_compose_log_tail(dep)
+            except Exception:  # noqa: BLE001
+                pass
+        elif dep.log_path:
             start_tailer(dep, from_start=False)

@@ -28,6 +28,16 @@ class HostProxyMiddleware:
             environment = None
 
         if environment is not None:
+            # Visiting a live app runs inside the long-lived web server, so this
+            # is a reliable moment to (idempotently) adopt log tailers — incl.
+            # compose tees that would otherwise be missing after a restart or a
+            # one-shot deploy. Cheap + best-effort; never block the proxy.
+            try:
+                from .tailer import ensure_tailers
+
+                ensure_tailers()
+            except Exception:  # noqa: BLE001
+                pass
             path = request.path_info.lstrip("/")
             return _proxy_to(request, environment, path)
 
