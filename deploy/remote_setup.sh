@@ -23,6 +23,11 @@ echo "▸ Node + Claude Code CLI"
 command -v node >/dev/null || { curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash -; sudo apt-get install -y nodejs; }
 command -v claude >/dev/null || sudo npm install -g @anthropic-ai/claude-code
 
+echo "▸ Docker (for Docker-Compose env deploys)"
+command -v docker >/dev/null || { curl -fsSL https://get.docker.com | sudo sh; }
+sudo usermod -aG docker "$USER" || true
+sudo systemctl enable --now docker || true
+
 echo "▸ Caddy"
 if ! command -v caddy >/dev/null; then
   curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/gpg.key' | sudo gpg --dearmor -o /usr/share/keyrings/caddy-stable-archive-keyring.gpg
