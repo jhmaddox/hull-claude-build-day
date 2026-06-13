@@ -56,6 +56,12 @@ function page() {
   ul{list-style:none;padding:0;margin:24px 0 0;}
   li{display:flex;gap:12px;align-items:center;padding:12px 0;border-top:1px solid #232838;}
   .e{font-size:22px;} .p{margin-left:auto;color:${THEME.accent};font-variant-numeric:tabular-nums;}
+  .demo{margin-top:28px;padding-top:20px;border-top:1px dashed #2c3340;}
+  .demo a.buy{display:inline-block;padding:10px 18px;border-radius:10px;font-weight:600;color:#0b0d12;background:${THEME.accent};text-decoration:none;}
+  .demo button{padding:10px 18px;border-radius:10px;font-weight:600;border:1px solid #5b2b2b;background:#3a1414;color:#ff9b9b;cursor:pointer;}
+  .demo button:disabled{opacity:.6;cursor:progress;}
+  .demo .row{display:flex;gap:12px;align-items:center;flex-wrap:wrap;}
+  #bstat{font-size:13px;}
 </style></head>
 <body>
   <div class="env-banner">${THEME.emoji} ${THEME.label} — ${PROJECT}-${ENV}</div>
@@ -63,7 +69,35 @@ function page() {
     <h1>🛒 WidgetCart <span class="envtag">${THEME.label}</span></h1>
     <div class="muted">A tiny Node sample app, deployed live by Hull · environment: <strong>${ENV}</strong></div>
     <ul>${rows}</ul>
+    <div class="demo">
+      <div class="muted" style="margin-bottom:12px;">Demo controls — checkout has a planted bug that returns HTTP 500.</div>
+      <div class="row">
+        <a class="buy" href="/checkout">Checkout (fails once)</a>
+        <button id="break" type="button">🧨 Trigger incident — break checkout</button>
+        <span id="bstat" class="muted"></span>
+      </div>
+    </div>
   </div></div>
+  <script>
+  (function(){
+    var btn=document.getElementById('break'), stat=document.getElementById('bstat');
+    btn.addEventListener('click', function(){
+      var n=30, done=0, fail=0;
+      btn.disabled=true; stat.textContent='firing '+n+' failing checkouts…';
+      for(var i=0;i<n;i++){
+        fetch('/checkout',{cache:'no-store'})
+          .then(function(r){ done++; if(r.status>=500){fail++;} tick(); })
+          .catch(function(){ done++; tick(); });
+      }
+      function tick(){
+        if(done>=n){
+          stat.textContent='fired '+n+' checkouts ('+fail+' failed) — watch Hull open an incident';
+          btn.disabled=false;
+        }
+      }
+    });
+  })();
+  </script>
 </body></html>`;
 }
 
