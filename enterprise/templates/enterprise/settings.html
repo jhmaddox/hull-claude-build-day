@@ -46,6 +46,7 @@
     <div class="card-head"><h2 class="title-xl">Enterprise controls</h2></div>
     <div class="row gap-8">
       {% if request|can:"admin" %}
+        <a class="btn btn-ghost" href="{% url 'enterprise:members' %}">Members</a>
         <a class="btn btn-ghost" href="{% url 'enterprise:keys' %}">API keys</a>
         <a class="btn btn-ghost" href="{% url 'enterprise:audit' %}">Audit log</a>
       {% else %}

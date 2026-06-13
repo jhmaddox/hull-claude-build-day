@@ -1,0 +1,48 @@
+{% extends "base.html" %}
+{% block title %}Members{% endblock %}
+{% block crumbs %}<span class="muted">Enterprise</span> / <span>Members</span>{% endblock %}
+{% block content %}
+  <div class="card mb-16">
+    <div class="card-head">
+      <h2 class="title-xl">Members</h2>
+      <a class="btn btn-ghost" href="{% url 'enterprise:settings' %}">Settings</a>
+    </div>
+    <p class="muted small">{{ memberships|length }} member{{ memberships|length|pluralize }} · {{ owner_count }} owner{{ owner_count|pluralize }}</p>
+  </div>
+
+  <div class="card">
+    {% if memberships %}
+      <table class="table">
+        <thead>
+          <tr><th>User</th><th>Role</th><th>Joined</th><th>Actions</th></tr>
+        </thead>
+        <tbody>
+          {% for m in memberships %}
+            <tr>
+              <td>{{ m.user.username }}<span class="faint small"> {{ m.user.email }}</span></td>
+              <td><span class="badge badge-neutral">{{ m.get_role_display }}</span></td>
+              <td class="muted small nowrap">{{ m.created_at|date:"M j, Y" }}</td>
+              <td>
+                <form method="post" action="{% url 'enterprise:member_role' m.pk %}" class="row gap-8">
+                  {% csrf_token %}
+                  <select class="field" name="role">
+                    {% for value, label in roles %}
+                      <option value="{{ value }}" {% if value == m.role %}selected{% endif %}>{{ label }}</option>
+                    {% endfor %}
+                  </select>
+                  <button class="btn btn-ghost" type="submit">Update</button>
+                </form>
+                <form method="post" action="{% url 'enterprise:member_remove' m.pk %}" onsubmit="return confirm('Remove {{ m.user.username }}?');" class="mt-8">
+                  {% csrf_token %}
+                  <button class="btn btn-ghost" type="submit">Remove</button>
+                </form>
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    {% else %}
+      <div class="empty muted">No members in this org.</div>
+    {% endif %}
+  </div>
+{% endblock %}

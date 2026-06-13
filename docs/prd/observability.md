@@ -1,197 +1,251 @@
 # PRD — Observability v2 (Datadog-level)
 
-Owner: Observability PM · Sprint 1 (Build-out) · App: `observability/`
-Status: ready for build
+Owner: Observability PM · App: `observability/`
+Status: ready for build (depth sprint — additive on top of the shipped MVP)
 
 ---
 
-## 1. Problem
+## 0. Where we are (current state — already shipped & green)
 
-Hull already ingests deployment logs, derives a few metrics, and auto-opens
-incidents from tracebacks. But the observability surface is a read-only "wall of
-recent errors": there is no way to **search/filter logs**, the metrics are raw
-single-name counters with no **rollups** (no rate, no percentiles), there is no
-**live dashboard** of the golden signals, and there is no concept of a
-user-defined **Monitor** that turns a threshold breach into an incident. It is
-also **not yet org-scoped** — `LogLine`, `MetricPoint`, and `Incident` have no
-`org` field, so a multi-tenant Hull would leak one tenant's telemetry to another.
+The Sprint-1 build-out for Observability is **already implemented, migrated, and
+passing** (`python manage.py check` is clean, `makemigrations observability
+--check` reports no changes, the traceback→incident regression tests pass):
 
-The autonomous incident → fix loop (the crown jewel) currently fires incidents
-only from *parsed tracebacks*. We want to add a second, additive trigger
-(threshold Monitors) **without touching** the existing traceback path or any of
-the `deploys/observability/orchestration/agents` service contracts.
+- **Org scoping (done).** `LogLine`, `MetricPoint`, `Incident` each carry a
+  nullable `org` FK; `Monitor` subclasses `OrgScopedModel`. All `/obs/` request
+  views are `@org_required` and filter by `request.org`. Services resolve org
+  from `deployment.environment.project.org` with a `None` fallback (loop-safe).
+- **Structured log search (done).** `/obs/deployment/<pk>/logs/` with server-side
+  `q` / `level` / `status` (exact or `5xx` class) / `method` / `path` filters,
+  paginated, HTMX fragment.
+- **Metric rollups (done).** `services.rollups(deployment, window_minutes=5)`
+  returns `req_rate`, `error_rate` (percent, clamped 0–100), `throughput`, and
+  nearest-rank `p50/p95/p99` (None when no samples).
+- **Live dashboard (done).** `/obs/deployment/<pk>/` golden-signal stat tiles +
+  SVG sparklines, auto-refreshing via the `/obs/deployment/<pk>/metrics/` HTMX
+  poll fragment (`hx-trigger="every 5s"`).
+- **Monitors → incident (done).** `Monitor` model (metric / comparator /
+  threshold / window / severity / enabled) with full CRUD UI; `evaluate_monitors`
+  is called additively at the end of `ingest_line` inside a try/except and opens
+  an incident through the existing `open_or_update_incident` path (feeds the
+  autonomous remediation loop).
 
-This sprint makes Observability tenant-safe and brings it to a credible
-"Datadog-level" MVP: structured log search/filter, metric rollups (req rate,
-error rate, p50/p95/p99, throughput), a live golden-signals dashboard, and
-threshold Monitors that open incidents through the existing pipeline.
+So this sprint is **NOT** a rebuild. It is a **depth pass** that closes the gaps
+that keep Observability short of a credible Datadog/Grafana feel — done strictly
+additively so the crown-jewel incident→fix loop and every frozen service
+signature stay byte-compatible.
+
+## 1. Problem (what's still missing)
+
+1. **Monitors are one-shot — they never recover.** A breach opens an incident,
+   but when the metric returns to healthy nothing closes it and there is no "OK"
+   state. The monitor list shows a static `enabled/disabled` pill, never the live
+   **OK / Alerting** status. Operators can't trust monitors that don't clear.
+2. **No time-window control on the dashboard.** `window_minutes` is hard-coded to
+   5 everywhere; the metrics fragment ignores any window param. You can't look at
+   1m / 15m / 1h, which is table stakes for a metrics UI.
+3. **No org-level fleet view.** The overview is a wall of per-deployment cards;
+   there is no single aggregated "is my org healthy right now?" summary
+   (total req rate, total errors, worst p95, count of firing monitors).
+4. **Monitors can't be muted.** During a known-bad deploy or maintenance there's
+   no way to snooze a monitor without deleting it, so it spams the loop.
+5. **Thin test coverage on the new surface.** Only the legacy ingestion/traceback
+   path is tested; rollups, percentiles, monitor breach/recovery, and org
+   isolation have no regression guard.
 
 ## 2. Users & user stories
 
-- **As an operator (org member)** I want to search and filter a deployment's logs
-  by free text, level, HTTP status, method, and path so I can debug an issue fast.
-- **As an operator** I want a live dashboard showing request rate, error rate,
-  and p50/p95/p99 latency per deployment so I can see health at a glance, and
-  have it refresh without a full page reload (HTMX poll).
-- **As an SRE** I want to define a **Monitor** ("error rate > 5% for 5 min",
-  "p95 latency > 800ms") that automatically opens an incident when breached, so
-  problems that aren't crashes still page us — and feed the autonomous fix loop.
-- **As an org admin** I want all logs, metrics, monitors, and incidents scoped to
-  my org so I never see another tenant's data.
-- **As the autonomous loop (no request/no user)** I must keep ingesting logs,
-  recording metrics, and opening traceback incidents exactly as before, even when
-  there is no `request.org` (services default `org=None`).
+- **As an SRE** I want a monitor to **auto-resolve** its incident when the metric
+  recovers (and to show a live **OK / Alerting** status) so I can trust it and so
+  recovered alerts stop feeding the fix loop.
+- **As an operator** I want to switch the dashboard between **1m / 5m / 15m / 60m**
+  windows so I can zoom from "right now" to "last hour" without leaving the page.
+- **As an org admin** I want a **fleet summary** at `/obs/` — total request rate,
+  total errors, worst p95, firing-monitor count across all my org's live
+  deployments — so I can see overall health at a glance, scoped to my org only.
+- **As an on-call engineer** I want to **mute/snooze a monitor** for N minutes
+  during a known issue so it stops paging, then auto-un-mute.
+- **As the autonomous loop (no request/no user)** I must keep ingesting,
+  recording metrics, and opening traceback incidents exactly as today; monitor
+  recovery/auto-resolve must NEVER touch traceback-based incidents and must never
+  raise into `ingest_line`.
 
 ## 3. Scope — IN (this sprint)
 
-1. **Org scoping (additive).** Add a nullable `org` FK to `LogLine`,
-   `MetricPoint`, and `Incident` (and the new `Monitor`). Populate it from the
-   deployment's project at write time when an org is resolvable; default `None`
-   otherwise. All `/obs/` request-path views filter by `request.org`.
-2. **Structured log search/filter.** A per-deployment log view with server-side
-   filters: free-text `q` (matches message/path), `level`, `status` (exact or
-   class like `5xx`), `method`, and `path` substring. HTMX fragment, paginated.
-3. **Metric rollups.** A rollup helper that, from raw `MetricPoint`s, computes
-   over a time window: request rate (req/min), error rate (% of 5xx),
-   throughput (total requests), and latency **p50/p95/p99** from `latency_ms`
-   samples. Exposed in the dashboard and reused by Monitors.
-4. **Live dashboard.** A golden-signals dashboard per live deployment showing
-   req rate, error rate, p50/p95/p99, and throughput as stat tiles + sparklines,
-   auto-refreshing via an HTMX poll fragment (no full reload).
-5. **Monitors (threshold → incident).** A `Monitor` model (metric, comparator,
-   threshold, window, severity, enabled) with list/create/edit/delete UI scoped
-   to the org, and an **evaluation function** that, when a monitor is breached,
-   opens/updates an incident via the existing `open_or_update_incident` path
-   (additive trigger; reuses dedupe + auto-remediation).
-6. **Design + integration safety.** All new templates `{% extends "base.html" %}`
-   and use `helm.css` classes. Zero changes to `accounts/models.py`,
-   `helm/urls.py`, `helm/settings.py`, `templates/base.html`. Existing service
+1. **Monitor recovery + auto-resolve (additive).** Give `Monitor` a derived live
+   status (OK / Alerting / Muted). When `evaluate_monitors` runs and a monitor
+   that previously opened an incident is now **back inside threshold for a full
+   evaluation**, auto-resolve *that monitor's* open incident (set
+   `status=resolved`, `resolved_at`, emit a `core.Event` icon `check`). It must
+   only ever resolve incidents whose `error_type == "MonitorBreach"` and whose
+   signature matches that monitor — never a traceback incident. All wrapped so it
+   cannot break ingestion.
+2. **Monitor mute/snooze.** Add a nullable `muted_until` datetime to `Monitor`. A
+   muted monitor is skipped by `evaluate_monitors` (opens nothing). UI: a
+   "Mute 30m / 2h" action on the monitor list + a visible **Muted** badge; mute
+   clears automatically once `muted_until` passes. Live status pill on the list:
+   **OK** (green) / **Alerting** (red) / **Muted** (grey) / **Disabled**.
+3. **Dashboard time-window selector.** Add a window control (1 / 5 / 15 / 60 min)
+   to the dashboard; the `window` query param flows through the dashboard view
+   and the `/obs/deployment/<pk>/metrics/` poll fragment so rollups recompute for
+   the chosen window. Default stays 5 (backward compatible).
+4. **Org fleet summary.** Add an aggregate summary block to `/obs/` (or a new
+   `/obs/summary/` fragment) computing, across the org's live deployments: total
+   req rate, total throughput, total 5xx, worst p95, and counts of
+   firing/alerting monitors and open incidents — strictly `request.org`-scoped.
+5. **Regression tests.** Add `observability/tests.py` coverage for: rollups
+   percentile correctness + error-rate math; monitor breach opens exactly one
+   incident; monitor recovery auto-resolves *only* its own MonitorBreach
+   incident (and leaves a traceback incident untouched); muted monitor opens
+   nothing; org isolation of monitors/logs.
+6. **Design + integration safety.** All new/changed templates `{% extends
+   "base.html" %}` and use `helm.css` classes. Zero changes to
+   `accounts/models.py`, `helm/urls.py`, `helm/settings.py`, `templates/base.html`,
+   or any app dir other than `observability/` and `docs/`. Frozen service
    signatures (`ingest_line`, `record_metric`, `open_or_update_incident`,
-   `next_incident_number`, `ingest_line_lookup`) remain byte-compatible.
+   `next_incident_number`, `ingest_line_lookup`, `rollups`, `evaluate_monitors`)
+   stay call-compatible; `ingest_line(deployment, raw)` still returns a `LogLine`.
 
 ## 4. Scope — OUT (explicitly deferred)
 
-- Full Datadog query language / log facets / saved views.
+- Full Datadog query language / log facets / saved views / custom user-built
+  dashboards.
 - Distributed tracing / spans / flame graphs / APM.
-- Cross-deployment aggregate dashboards or custom user-built dashboards.
-- Notification channels (Slack/email/PagerDuty integrations) — Monitors only
-  open in-product incidents this sprint (Incidents v2 owns routing).
-- Long-term metric retention / downsampling / external TSDB.
-- Anomaly detection / forecasting / ML monitors.
-- Editing the traceback-based incident detection (frozen — additive only).
+- Notification channels (Slack/email/PagerDuty) — Monitors still only open
+  in-product incidents; routing/paging is owned by Incidents v2 (`oncall/`).
+- Long-term metric retention / downsampling / external TSDB; anomaly detection /
+  forecasting / ML monitors.
+- Editing the traceback-based incident detector (frozen — additive only).
+- Changing how orchestration/oncall resolve *traceback* incidents.
 
 ## 5. Design / technical notes (for the builder)
 
-- **Do NOT modify `accounts/models.py`.** Import the contract:
-  `from accounts.models import OrgScopedModel` for the new `Monitor` model.
-  For existing models (`LogLine`, `MetricPoint`, `Incident`) add the `org` FK by
-  subclassing `OrgScopedModel` **or** adding the field directly per the contract
-  (`org = ForeignKey('accounts.Org', null=True, blank=True, on_delete=CASCADE,
-  related_name='+')`). Keep it **nullable**.
-- **Request paths** use `accounts.scoping` (`org_required` decorator + `scoped()`
-  or `Model.objects.for_org(request.org)`). Anonymous / org-less requests must
-  not crash.
-- **Autonomous loop safety:** `ingest_line`, `record_metric`,
-  `open_or_update_incident`, and `evaluate_monitors` run with **no request**.
-  They must resolve org from `deployment.environment.project.org` when present,
-  else `org=None`, and must never raise if org is unavailable. Wrap org
-  resolution in a try/except that falls back to `None`.
-- Reuse existing helpers (`_spark`, `_deployment_metric_series`) where possible;
-  add a `rollups(deployment, window_minutes=...)` function in
-  `observability/services.py` (additive, new name).
-- Percentiles computed in Python from `latency_ms` samples (nearest-rank);
-  return `None` when there are no samples (template shows `—`).
-- Monitor evaluation is invoked **additively**: call `evaluate_monitors(deployment)`
-  at the end of `ingest_line` (after metrics are recorded), inside a try/except
-  so a monitor bug can never break ingestion. Do not change `ingest_line`'s
-  signature or return value.
-- New URLs go in `observability/urls.py` only (own the app's `urls.py`).
-- Run `python manage.py makemigrations observability` and `python manage.py
-  check`. **Do NOT run `migrate`** (integrator owns the shared DB).
-- Emit `core.models.Event.log(...)` when a Monitor opens an incident (icon
-  `alert`, level `warning`/`error`) so the activity feed narrates it.
+- **Do NOT modify `accounts/models.py`.** `Monitor` already subclasses
+  `OrgScopedModel`. Add `muted_until` (and any derived helpers) to `Monitor`
+  only. Run `python manage.py makemigrations observability`; **do NOT** run
+  `migrate` (integrator owns the shared DB). Keep `org` nullable.
+- **Auto-resolve must be surgical.** Only resolve an `Incident` where
+  `error_type == "MonitorBreach"` AND its `signature` equals the signature this
+  monitor would produce (derive it the same way `open_or_update_incident` does:
+  signature of `error_type:error_message` where `error_message` is the stable
+  `monitor:<pk> …` string already emitted by `evaluate_monitors`). NEVER touch
+  incidents with a `suspect_file` / traceback. Add a regression test proving a
+  traceback incident is left firing when a monitor recovers.
+- **Loop safety (hard rule).** Recovery/auto-resolve and mute logic run inside
+  `evaluate_monitors`, which `ingest_line` already calls wrapped in try/except.
+  Keep every new branch defensive (per-monitor try/except) so one bad monitor
+  can't abort the pass, and never change `ingest_line`'s signature or return
+  value. `evaluate_monitors(deployment)` must remain callable and return a list.
+- **Status is derived, not a stored column** (avoids migrations churn and stale
+  state): `Monitor.live_status(deployment=None)` → `"muted"` if
+  `muted_until and muted_until > now`, else `"disabled"` if not `enabled`, else
+  `"alerting"` if an unresolved MonitorBreach incident matches its signature,
+  else `"ok"`. Surface it on the list template as a pill.
+- **Window plumbing.** Read `window` from `request.GET`, clamp to one of
+  `{1,5,15,60}` (default 5), pass to `rollups(...)`, and reflect it in the
+  fragment's `hx-get` URL so the poll preserves the selected window.
+- **Fleet summary** must reuse `rollups()` per live deployment and the existing
+  `_org_deployments(request)` / `_org_incidents(request)` helpers; do not add a
+  new cross-org query. Empty org → zeros, never a crash.
+- New URLs go in `observability/urls.py` only. Emit `core.models.Event.log(...)`
+  on monitor auto-resolve (icon `check`, level `success`) and on mute (icon
+  `alert`, level `info`) so the activity feed narrates it.
+- Match `static/css/helm.css` (`card`, `stat`, `badge`, `pill`, `grid-*`,
+  `logs`, `btn`); no new CSS/JS frameworks; minimal vanilla JS / HTMX only.
 
 ## 6. Machine-checkable rubric (pass/fail)
 
-Each item is independently verifiable. "Run check" commands assume repo root with
-`.venv` active. All Python snippets use `python manage.py shell -c "..."`.
+Each item is independently verifiable. Commands assume repo root with `.venv`
+active; Python snippets use `python manage.py shell -c "..."`.
 
-1. **PRD exists.** `docs/prd/observability.md` exists and contains the sections
-   Problem, user stories, scope-in, scope-out, and this rubric.
+1. **PRD exists & is complete.** `docs/prd/observability.md` exists and contains
+   Problem, user stories, scope-in, scope-out, current-state, and this numbered
+   rubric.
 2. **System check passes.** `python manage.py check` exits 0.
 3. **Migration generated, not applied by builder.** `observability/migrations/`
-   contains a new migration (≥ `0002`) and `python manage.py makemigrations
-   observability --check --dry-run` reports no further changes pending.
-4. **`org` field on LogLine.** `LogLine._meta.get_field("org")` exists, is a
-   ForeignKey to `accounts.Org`, and `null=True`.
-5. **`org` field on MetricPoint.** Same as #4 for `MetricPoint`.
-6. **`org` field on Incident.** Same as #4 for `Incident`.
-7. **`Monitor` model exists & is org-scoped.** `observability.models.Monitor`
-   imports; has fields `deployment` (FK, nullable OK), `metric`, `comparator`,
-   `threshold` (float), `window_minutes` (int), `severity`, `enabled` (bool),
-   and an `org` FK to `accounts.Org` with `null=True`.
-8. **Autonomous ingest still works with no org.** Creating a `Deployment` whose
-   project has `org=None`, then calling
-   `observability.services.ingest_line(dep, '[13/Jun/2026 16:00:00] "GET / HTTP/1.1" 200 12')`
-   returns a `LogLine` without raising; the line is recorded with `org=None`.
-9. **Traceback incident path unchanged.** Feeding a multi-line Python traceback
-   through `ingest_line` (Traceback header … `ValueError: boom`) opens exactly one
-   `Incident` with `error_type="ValueError"`, as before. (Regression guard on the
-   crown-jewel detector.)
-10. **Service signatures intact.** `inspect.signature` of `ingest_line`,
-    `record_metric`, `open_or_update_incident`, `next_incident_number`, and
-    `ingest_line_lookup` is unchanged from the contract (params/defaults match);
-    `ingest_line(deployment, raw)` still returns a `LogLine`.
-11. **`rollups()` helper.** `observability.services.rollups(deployment)` returns a
-    dict containing keys `req_rate`, `error_rate`, `throughput`, `p50`, `p95`,
-    `p99` (latency values may be `None` when no samples).
-12. **Percentiles are correct.** Given recorded `latency_ms` MetricPoints
-    `[10,20,30,40,50,60,70,80,90,100]` for a deployment, `rollups(dep)` returns
-    `p50≈50` or `60`, `p95≈100` (nearest-rank, monotonic: `p50 ≤ p95 ≤ p99`).
-13. **Error rate correct.** With 10 `requests` and 2 `errors` recorded in-window,
-    `rollups(dep)["error_rate"]` is ~20 (percent) or ~0.2 (fraction) — documented
-    and consistent; non-negative and ≤ 100 (or ≤ 1 for fraction).
-14. **Log search filters by level.** `GET /obs/deployment/<pk>/logs/?level=error`
-    (authenticated, org member) returns 200 and the rendered fragment contains
-    only error-level lines (no `l-info`/`l-warn` rows for non-error logs).
-15. **Log search filters by free text.** `GET
-    /obs/deployment/<pk>/logs/?q=checkout` returns 200 and every shown line's
-    message or path contains `checkout` (case-insensitive).
-16. **Log search filters by status class.** `GET
-    /obs/deployment/<pk>/logs/?status=5xx` returns 200 and shows only lines with
-    `status_code >= 500` (or none).
-17. **Dashboard route exists & renders.** A dashboard view is reachable under
-    `/obs/` (e.g. `/obs/deployment/<pk>/` or `/obs/dashboard/<pk>/`), returns 200
-    for an org member, and the page shows req rate, error rate, and p50/p95/p99
-    labels.
-18. **Dashboard live-refresh fragment.** There is an HTMX poll fragment endpoint
-    (e.g. `/obs/deployment/<pk>/metrics/`) that returns 200 and a partial (not a
-    full `<html>` doc), referenced via `hx-get`/`hx-trigger` in the dashboard
-    template.
-19. **Monitor CRUD UI.** `GET /obs/monitors/` returns 200 for an org member and
-    lists monitors; a create endpoint (`/obs/monitors/new/`) exists and POSTing a
-    valid monitor creates a `Monitor` row scoped to `request.org`.
-20. **Monitor scoping enforced.** A monitor created under org A is **not** listed
-    when requesting `/obs/monitors/` as a member of org B (filtered by
-    `request.org`). Same isolation holds for the log/dashboard views.
-21. **Monitor breach opens an incident additively.** Calling
-    `observability.services.evaluate_monitors(dep)` (or the documented eval entry
-    point) when a monitor's metric breaches its threshold opens/updates an
-    `Incident` via `open_or_update_incident` and emits a `core.Event`
-    (icon `alert`). A non-breaching monitor opens nothing.
-22. **Monitor eval cannot break ingestion.** With a monitor configured to raise
-    (or with monitors present), `ingest_line(dep, raw)` still returns a `LogLine`
-    and does not propagate exceptions (monitor eval is wrapped in try/except).
-23. **Auth/org gate on views.** Hitting `/obs/`, `/obs/monitors/`, and the log
-    view while unauthenticated redirects to login (or onboarding), not a 500.
-24. **No forbidden files modified.** `git status --porcelain` shows no changes to
-    `accounts/models.py`, `helm/urls.py`, `helm/settings.py`, `templates/base.html`,
-    or any app dir other than `observability/` and `docs/`.
-25. **Design system respected.** Every new template under
+   contains a new migration (≥ `0003`) and `python manage.py makemigrations
+   observability --check --dry-run` reports **no further** changes pending.
+4. **`muted_until` field added.** `observability.models.Monitor._meta.get_field(
+   "muted_until")` exists, is a `DateTimeField`, and is nullable (`null=True`).
+5. **Crown-jewel regression — traceback incident unchanged.** Feeding the 8-line
+   `ZeroDivisionError` traceback (see existing `tests.py`) through `ingest_line`
+   still opens exactly one `Incident` with `error_type="ZeroDivisionError"` and
+   `suspect_file="shop/cart.py"`, `suspect_line=88`. (Existing tests still pass.)
+6. **Frozen signatures intact.** `inspect.signature` of `ingest_line`,
+   `record_metric`, `open_or_update_incident`, `next_incident_number`,
+   `ingest_line_lookup`, `rollups`, and `evaluate_monitors` is unchanged
+   (params/defaults match prior contract); `ingest_line(deployment, raw)` returns
+   a `LogLine`; `evaluate_monitors(deployment)` returns a `list`.
+7. **Ingest still loop-safe with no org.** With a project whose `org=None`,
+   `ingest_line(dep, '[13/Jun/2026 16:00:00] "GET / HTTP/1.1" 200 12')` returns a
+   `LogLine` without raising and stores it with `org=None`.
+8. **`rollups` keys + percentile monotonicity.** With `latency_ms` points
+   `[10,20,…,100]` recorded in-window, `rollups(dep)` returns a dict with keys
+   `req_rate, error_rate, throughput, p50, p95, p99` and `p50 ≤ p95 ≤ p99` with
+   `p95 ≈ 100` (nearest-rank).
+9. **Error-rate math.** With 10 `requests` and 2 `errors` in-window,
+   `rollups(dep)["error_rate"]` is ~20 (percent), non-negative and ≤ 100.
+10. **Window param honored.** `rollups(dep, window_minutes=1)` and
+    `rollups(dep, window_minutes=60)` both return valid dicts; the dashboard view
+    `GET /obs/deployment/<pk>/?window=15` returns 200 and the metrics fragment
+    `GET /obs/deployment/<pk>/metrics/?window=15` returns 200 and its `hx-get`
+    URL carries `window=15` (poll preserves the window).
+11. **Window clamped/safe.** A bogus window (`?window=abc` or `?window=9999`)
+    does not 500; the view falls back to a valid window from `{1,5,15,60}`.
+12. **`Monitor.live_status` exists.** A `Monitor` instance exposes a
+    `live_status` method/property returning one of
+    `{"ok","alerting","muted","disabled"}`; a disabled monitor → `"disabled"`,
+    a monitor with `muted_until` in the future → `"muted"`.
+13. **Monitor list shows live status pill.** `GET /obs/monitors/` (org member)
+    returns 200 and the rendered HTML contains a status pill/badge reflecting
+    OK / Alerting / Muted / Disabled (not just the old enabled/disabled text).
+14. **Mute action works + scoped.** A POST mute endpoint (e.g.
+    `/obs/monitors/<pk>/mute/`) sets `muted_until` to a future datetime for a
+    monitor in `request.org`; afterwards `live_status == "muted"`. Muting a
+    monitor that belongs to another org 404s.
+15. **Muted monitor opens nothing.** A monitor whose threshold is breached but
+    with `muted_until` in the future opens **no** incident when
+    `evaluate_monitors(dep)` runs.
+16. **Monitor breach opens exactly one incident.** A non-muted, enabled monitor
+    whose metric breaches threshold opens/updates exactly one `Incident` via
+    `open_or_update_incident` (error_type `"MonitorBreach"`) and emits a
+    `core.Event` (icon `alert`); calling `evaluate_monitors` again while still
+    breached does not create a second incident (dedupe holds).
+17. **Monitor auto-resolves on recovery.** After a monitor has opened a
+    MonitorBreach incident, when the metric returns within threshold and
+    `evaluate_monitors(dep)` runs, that monitor's incident becomes
+    `status="resolved"` with `resolved_at` set, and a `core.Event` (icon `check`,
+    level `success`) is emitted.
+18. **Auto-resolve is surgical (crown-jewel guard).** If a deployment has BOTH a
+    firing traceback incident (e.g. `ZeroDivisionError`) and a recovered monitor,
+    running `evaluate_monitors(dep)` resolves only the `MonitorBreach` incident;
+    the traceback incident remains unresolved (`status != "resolved"`).
+19. **Auto-resolve cannot break ingestion.** With monitors present (including a
+    recovering one), `ingest_line(dep, raw)` still returns a `LogLine` and
+    propagates no exception (monitor eval remains fully try/except-wrapped).
+20. **Fleet summary renders & is scoped.** `GET /obs/` (org member) returns 200
+    and shows an aggregate summary (total req rate / total errors / worst p95 /
+    firing-monitor or open-incident count) across the org's live deployments; an
+    org with no deployments renders zeros without a 500.
+21. **Org isolation holds.** A `Monitor` created under org A is **not** listed at
+    `/obs/monitors/` for a member of org B, and org B cannot mute/edit/delete it
+    (404). Logs/dashboard for a deployment in org A 404 for org B.
+22. **Auth/org gate.** Hitting `/obs/`, `/obs/monitors/`, the dashboard, and the
+    log view while unauthenticated redirects to login/onboarding (not a 500).
+23. **New tests pass.** `python manage.py test observability` exits 0 and includes
+    new tests covering rollups percentiles, error-rate, monitor breach,
+    monitor recovery auto-resolve (incl. the traceback-untouched guard), and
+    muted-monitor-opens-nothing.
+24. **No forbidden files modified.** `git status --porcelain` shows changes only
+    under `observability/` and `docs/`; no diff to `accounts/models.py`,
+    `helm/urls.py`, `helm/settings.py`, `templates/base.html`, or any other app.
+25. **Design system respected.** Every new/changed template under
     `observability/templates/` starts with `{% extends "base.html" %}` and uses
-    `helm.css` classes (e.g. `card`, `stat`, `badge`, `grid-*`, `logs`); no new
-    external CSS/JS frameworks are added.
+    `helm.css` classes (`card`, `stat`, `badge`, `pill`, `grid-*`, `logs`,
+    `btn`); no new external CSS/JS frameworks are added.
 
 ## 7. Ticket list (for the builder)
 
-See the structured ticket output accompanying this PRD (OBS-1 … OBS-8).
+See the structured ticket output accompanying this PRD (OBS-9 … OBS-14). They
+build strictly on the shipped MVP and are ordered so the crown-jewel-adjacent
+work (monitor recovery) lands behind its regression guard.

@@ -77,6 +77,28 @@ def _svg_sparkline(series, width=160, height=36, color="var(--accent)"):
     )
 
 
+_ALLOWED_WINDOWS = (1, 5, 15, 60)
+
+
+def _clamp_window(params, default=5):
+    """Read ``window`` from GET params and clamp to a valid choice.
+
+    Bogus values (``abc``, ``9999``, negatives) never 500 — they fall back to a
+    value in ``{1,5,15,60}`` (the requested default, or the nearest allowed).
+    """
+    raw = params.get("window")
+    if raw is None or raw == "":
+        return default
+    try:
+        val = int(raw)
+    except (TypeError, ValueError):
+        return default
+    if val in _ALLOWED_WINDOWS:
+        return val
+    # Out-of-set but numeric: snap to the nearest allowed window.
+    return min(_ALLOWED_WINDOWS, key=lambda w: abs(w - val))
+
+
 def _dep_dashboard_ctx(deployment, window_minutes=5):
     rolled = services.rollups(deployment, window_minutes=window_minutes)
     req_series = _deployment_metric_series(deployment, "requests")
@@ -104,12 +126,27 @@ def overview(request):
         .order_by("-created_at")
     )
     cards = []
+    # Aggregate golden-signal fleet summary (request.org-scoped, empty -> zeros).
+    total_req_rate = 0.0
+    total_throughput = 0
+    total_errors = 0
+    worst_p95 = None
     for dep in live:
         req_series = _deployment_metric_series(dep, "requests")
         err_series = _deployment_metric_series(dep, "errors")
         recent_errors = list(
             dep.logs.filter(level=LogLine.Level.ERROR).order_by("-ts")[:6]
         )
+        try:
+            rolled = services.rollups(dep)
+        except Exception:
+            rolled = {"req_rate": 0.0, "throughput": 0, "p95": None}
+        total_req_rate += rolled.get("req_rate") or 0.0
+        total_throughput += int(rolled.get("throughput") or 0)
+        total_errors += int(sum(err_series))
+        p95 = rolled.get("p95")
+        if p95 is not None and (worst_p95 is None or p95 > worst_p95):
+            worst_p95 = p95
         cards.append(
             {
                 "dep": dep,
@@ -120,11 +157,32 @@ def overview(request):
                 "recent_errors": recent_errors,
             }
         )
+
+    open_incidents = (
+        _org_incidents(request)
+        .exclude(status=Incident.Status.RESOLVED)
+        .select_related("project")
+    )
+    # Firing monitors = org monitors whose derived live status is 'alerting'.
+    firing_monitors = sum(
+        1
+        for m in Monitor.objects.for_org(request.org)
+        if m.live_status() == "alerting"
+    )
+    summary = {
+        "total_req_rate": round(total_req_rate, 2),
+        "total_throughput": total_throughput,
+        "total_errors": total_errors,
+        "worst_p95": worst_p95,
+        "firing_monitors": firing_monitors,
+        "open_incidents": open_incidents.count(),
+        "live_deployments": len(cards),
+    }
+
     ctx = {
         "cards": cards,
-        "open_incidents": _org_incidents(request)
-        .exclude(status=Incident.Status.RESOLVED)
-        .select_related("project")[:8],
+        "summary": summary,
+        "open_incidents": open_incidents[:8],
     }
     return render(request, "observability/overview.html", ctx)
 
@@ -280,7 +338,9 @@ def deployment_logs(request, pk):
 @org_required
 def deployment_dashboard(request, pk):
     deployment = _get_org_deployment(request, pk)
-    ctx = _dep_dashboard_ctx(deployment)
+    window = _clamp_window(request.GET)
+    ctx = _dep_dashboard_ctx(deployment, window_minutes=window)
+    ctx["window_choices"] = _ALLOWED_WINDOWS
     return render(request, "observability/dashboard.html", ctx)
 
 
@@ -288,7 +348,8 @@ def deployment_dashboard(request, pk):
 def deployment_metrics(request, pk):
     """HTMX poll fragment: golden-signal stat tiles + sparklines (no full page)."""
     deployment = _get_org_deployment(request, pk)
-    ctx = _dep_dashboard_ctx(deployment)
+    window = _clamp_window(request.GET)
+    ctx = _dep_dashboard_ctx(deployment, window_minutes=window)
     return render(request, "observability/_metrics.html", ctx)
 
 
@@ -414,6 +475,50 @@ def monitor_edit(request, pk):
         "observability/monitor_form.html",
         _monitor_form_ctx(request, monitor),
     )
+
+
+@org_required
+def monitor_mute(request, pk):
+    """POST mute/snooze (e.g. ?minutes=30). minutes=0 clears the mute.
+
+    Scoped to ``Monitor.objects.for_org(request.org)`` so muting another org's
+    monitor 404s. Sets ``muted_until = now + minutes`` (time-based, auto-expires)
+    and narrates via ``core.Event``.
+    """
+    from django.utils import timezone
+
+    monitor = get_object_or_404(Monitor.objects.for_org(request.org), pk=pk)
+    if request.method != "POST":
+        return redirect("observability:monitor_list")
+
+    raw = request.POST.get("minutes") or request.GET.get("minutes") or "30"
+    try:
+        minutes = int(raw)
+    except (TypeError, ValueError):
+        minutes = 30
+    minutes = max(0, min(minutes, 60 * 24 * 7))  # clamp to <= 1 week
+
+    if minutes == 0:
+        monitor.muted_until = None
+        monitor.save(update_fields=["muted_until"])
+        Event.log(
+            f"Monitor unmuted: {monitor}",
+            actor=request.user.get_username(),
+            level="info",
+            icon="alert",
+        )
+        messages.success(request, "Monitor unmuted.")
+    else:
+        monitor.muted_until = timezone.now() + timezone.timedelta(minutes=minutes)
+        monitor.save(update_fields=["muted_until"])
+        Event.log(
+            f"Monitor muted {minutes}m: {monitor}",
+            actor=request.user.get_username(),
+            level="info",
+            icon="alert",
+        )
+        messages.success(request, f"Monitor muted for {minutes} minutes.")
+    return redirect("observability:monitor_list")
 
 
 @org_required

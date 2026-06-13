@@ -12,11 +12,44 @@
     <div class="title-xl">Projects</div>
     <div class="muted">
       {% if org %}<span class="badge badge-accent">{{ org.name }}</span> · {% endif %}
-      {{ project_count }} project{{ project_count|pluralize }} —
+      {{ total_count }} project{{ total_count|pluralize }} —
       version control, deploys, ops.
     </div>
   </div>
 </div>
+
+<div class="grid grid-auto mb-16">
+  <div class="card stat">
+    <div class="label">Projects</div>
+    <div class="value">{{ summary.total }}</div>
+  </div>
+  <div class="card stat">
+    <div class="label">Live</div>
+    <div class="value {% if summary.live %}success{% endif %}">{{ summary.live }}</div>
+  </div>
+  <div class="card stat">
+    <div class="label">Failed</div>
+    <div class="value {% if summary.failed %}danger{% endif %}">{{ summary.failed }}</div>
+  </div>
+  <div class="card stat">
+    <div class="label">Incidents</div>
+    <div class="value {% if summary.incidents %}danger{% endif %}">{{ summary.incidents }}</div>
+  </div>
+</div>
+
+<form method="get" action="/projects/" class="row gap-8 wrap mb-16">
+  <input class="input" type="search" name="q" value="{{ q }}"
+         placeholder="Search projects by name or repo…" style="min-width:260px;flex:1;">
+  <div class="row gap-8 wrap">
+    <a class="btn btn-sm {% if not status %}btn-primary{% endif %}"
+       href="/projects/{% if q %}?q={{ q|urlencode }}{% endif %}">All</a>
+    {% for value, label in statuses %}
+    <a class="btn btn-sm {% if status == value %}btn-primary{% endif %}"
+       href="/projects/?status={{ value|urlencode }}{% if q %}&q={{ q|urlencode }}{% endif %}">{{ label }}</a>
+    {% endfor %}
+  </div>
+  <button type="submit" class="btn btn-sm">Search</button>
+</form>
 
 <div class="grid grid-auto">
   {% for p in projects %}
@@ -28,18 +61,24 @@
     <div class="muted small mono" style="word-break:break-all;">{{ p.repo_url|default:p.local_path }}</div>
     {% if p.description %}<div class="muted small">{{ p.description|truncatechars:90 }}</div>{% endif %}
     <div class="row gap-8 wrap mt-8">
+      <span class="badge {{ p.health.badge_class }}"><span class="dot{% if p.health.verdict == 'live' %} dot-live{% endif %}"></span> {{ p.health.label }}</span>
       <span class="badge badge-neutral">{{ p.framework }}</span>
       <span class="badge badge-neutral">{{ p.environments.count }} env{{ p.environments.count|pluralize }}</span>
-      {% with live=0 %}{% endwith %}
-      {% for e in p.environments.all %}
-        {% if e.current_deployment.status == 'live' %}
-          <span class="badge badge-success"><span class="dot"></span> {{ e.name }} live</span>
-        {% endif %}
-      {% endfor %}
+      {% if p.health.open_incident_count %}
+        <span class="badge badge-danger">{{ p.health.open_incident_count }} open incident{{ p.health.open_incident_count|pluralize }}</span>
+      {% endif %}
     </div>
   </a>
   {% empty %}
-  <div class="card empty"><div class="big">⎈</div>No projects in {% if org %}{{ org.name }}{% else %}this workspace{% endif %} yet. <a class="link" href="/projects/new/">Import one</a> to begin.</div>
+    {% if has_query %}
+    <div class="card empty">
+      <div class="big">⌕</div>
+      No projects match{% if q %} “{{ q }}”{% endif %}{% if status %}{% if q %} ·{% endif %} the status filter{% endif %}.
+      <a class="link" href="/projects/">Clear</a> to see all projects.
+    </div>
+    {% else %}
+    <div class="card empty"><div class="big">⎈</div>No projects in {% if org %}{{ org.name }}{% else %}this workspace{% endif %} yet. <a class="link" href="/projects/new/">Import one</a> to begin.</div>
+    {% endif %}
   {% endfor %}
 </div>
 {% endblock %}

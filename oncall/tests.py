@@ -311,6 +311,113 @@ class ActionViewTests(TestCase):
 
 
 # --------------------------------------------------------------------------- #
+# R23 / R24 / R25 / R27 — severity change, reopen, board tick
+# --------------------------------------------------------------------------- #
+class SeverityChangeTests(TestCase):
+    def setUp(self):
+        self.org = _mk_org("acme")
+        self.user = _mk_user("alice", self.org)
+        self.client = Client()
+        self.client.force_login(self.user)
+        self.inc = _mk_incident(org=self.org, severity="sev2")
+
+    def test_valid_change_records_entry_and_event(self):
+        before = Event.objects.count()
+        self.client.post(f"/oncall/incidents/{self.inc.pk}/severity/", {"severity": "sev1"})
+        self.inc.refresh_from_db()
+        self.assertEqual(self.inc.severity, "sev1")
+        self.assertTrue(
+            TimelineEntry.objects.filter(
+                incident=self.inc, kind="severity_changed", user=self.user
+            ).exists()
+        )
+        self.assertEqual(Event.objects.count(), before + 1)
+
+    def test_invalid_change_rejected_no_crash(self):
+        r = self.client.post(
+            f"/oncall/incidents/{self.inc.pk}/severity/", {"severity": "nope"}
+        )
+        self.assertIn(r.status_code, (200, 302))
+        self.inc.refresh_from_db()
+        self.assertEqual(self.inc.severity, "sev2")
+        self.assertFalse(
+            TimelineEntry.objects.filter(incident=self.inc, kind="severity_changed").exists()
+        )
+
+    def test_detail_exposes_severity_selector(self):
+        r = self.client.get(f"/oncall/incidents/{self.inc.pk}/")
+        self.assertContains(r, f"/oncall/incidents/{self.inc.pk}/severity/")
+        self.assertContains(r, 'name="severity"')
+
+
+class ReopenTests(TestCase):
+    def setUp(self):
+        self.org = _mk_org("acme")
+        self.user = _mk_user("alice", self.org)
+        self.client = Client()
+        self.client.force_login(self.user)
+        self.inc = _mk_incident(org=self.org, severity="sev2", status="resolved")
+        Incident.objects.filter(pk=self.inc.pk).update(resolved_at=timezone.now())
+        self.inc.refresh_from_db()
+
+    def test_reopen_resolved_incident(self):
+        before = Event.objects.count()
+        self.client.post(f"/oncall/incidents/{self.inc.pk}/reopen/")
+        self.inc.refresh_from_db()
+        self.assertEqual(self.inc.status, "firing")
+        self.assertIsNone(self.inc.resolved_at)
+        self.assertTrue(
+            TimelineEntry.objects.filter(
+                incident=self.inc, kind="reopened", user=self.user
+            ).exists()
+        )
+        self.assertEqual(Event.objects.count(), before + 1)
+
+    def test_reopen_noop_if_not_resolved(self):
+        inc = _mk_incident(org=self.org, severity="sev2", status="firing")
+        self.client.post(f"/oncall/incidents/{inc.pk}/reopen/")
+        inc.refresh_from_db()
+        self.assertEqual(inc.status, "firing")
+        self.assertFalse(TimelineEntry.objects.filter(incident=inc, kind="reopened").exists())
+
+    def test_reopen_control_only_for_resolved(self):
+        r = self.client.get(f"/oncall/incidents/{self.inc.pk}/")
+        self.assertContains(r, f"/oncall/incidents/{self.inc.pk}/reopen/")
+        firing = _mk_incident(org=self.org, severity="sev2", status="firing")
+        r2 = self.client.get(f"/oncall/incidents/{firing.pk}/")
+        self.assertNotContains(r2, f"/oncall/incidents/{firing.pk}/reopen/")
+
+
+class BoardTickTests(TestCase):
+    def setUp(self):
+        self.org = _mk_org("acme")
+        self.user = _mk_user("alice", self.org)
+        self.client = Client()
+        self.client.force_login(self.user)
+        self.inc = _mk_incident(org=self.org, severity="sev2", status="firing")
+
+    def test_board_tick_200_and_invokes_escalation(self):
+        with mock.patch("oncall.views.escalation.tick") as m:
+            r = self.client.get("/oncall/board/tick/")
+        self.assertEqual(r.status_code, 200)
+        self.assertTrue(m.called)
+        self.assertContains(r, "/oncall/board/tick/")  # partial re-wires polling
+
+    def test_board_tick_survives_tick_exception(self):
+        with mock.patch(
+            "oncall.views.escalation.tick", side_effect=RuntimeError("boom")
+        ):
+            r = self.client.get("/oncall/board/tick/")
+        self.assertEqual(r.status_code, 200)
+
+    def test_board_includes_polling_partial(self):
+        r = self.client.get("/oncall/")
+        self.assertEqual(r.status_code, 200)
+        self.assertContains(r, "/oncall/board/tick/")
+        self.assertContains(r, 'hx-trigger="every 10s"')
+
+
+# --------------------------------------------------------------------------- #
 # R17 — postmortem
 # --------------------------------------------------------------------------- #
 class PostmortemTests(TestCase):

@@ -1,0 +1,26 @@
+{% load helm_extras %}
+<div class="card pad-0" id="oncall-open-incidents"
+     hx-get="/oncall/board/tick/"
+     hx-trigger="every 10s"
+     hx-swap="outerHTML">
+  <div class="card-head" style="padding:16px 18px 0;"><h2>Open incidents</h2>
+    <span class="pill pill-live"><span class="dot dot-live"></span> live</span>
+  </div>
+  <div style="padding:6px 0 8px;">
+    {% for inc in incidents %}
+    <a class="list-row" href="/oncall/incidents/{{ inc.pk }}/">
+      <div class="grow">
+        <div class="row gap-8">
+          <strong>INC-{{ inc.number }}</strong>
+          <span class="badge {{ inc.severity|status_badge }}">{{ inc.get_severity_display }}</span>
+          <span class="badge {{ inc.status|status_badge }}">{{ inc.get_status_display }}</span>
+        </div>
+        <div class="muted small">{{ inc.title }}</div>
+      </div>
+      <div class="muted small">{{ inc.created_at|timesince }} ago</div>
+    </a>
+    {% empty %}
+    <div class="empty">No open incidents. All systems nominal.</div>
+    {% endfor %}
+  </div>
+</div>

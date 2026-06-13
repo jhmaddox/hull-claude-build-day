@@ -16,6 +16,15 @@
   </div>
 </div>
 
+{# Time-window switcher: sets ?window= and reloads (the fragment then polls). #}
+<div class="row mb-16" style="gap:6px;align-items:center;">
+  <span class="muted small">Window:</span>
+  {% for w in window_choices %}
+  <a class="btn btn-sm {% if w == window_minutes %}btn-primary{% else %}btn-ghost{% endif %}"
+     href="/obs/deployment/{{ deployment.pk }}/?window={{ w }}">{{ w }}m</a>
+  {% endfor %}
+</div>
+
 {# Live metrics fragment — HTMX polled (hx-get / hx-trigger='every Ns'). #}
 {% include "observability/_metrics.html" %}
 {% endblock %}

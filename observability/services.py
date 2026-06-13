@@ -503,6 +503,51 @@ def _monitor_metric_value(rolled: dict, metric: str):
     return rolled.get(metric)
 
 
+def _recover_monitor(mon, deployment, window):
+    """Surgically auto-resolve a recovered monitor's OWN MonitorBreach incident.
+
+    Resolves ONLY an unresolved Incident whose ``error_type == 'MonitorBreach'``
+    and whose ``signature`` equals this monitor's breach signature. It NEVER
+    touches traceback/suspect_file incidents or any non-MonitorBreach incident
+    (crown-jewel safe). Emits a ``core.Event`` (icon='check', level='success').
+    Returns the resolved Incident or None.
+    """
+    from core.models import Event
+
+    from .models import Incident
+
+    sig = mon.breach_signature(window)
+    inc = (
+        Incident.objects.filter(error_type="MonitorBreach", signature=sig)
+        .exclude(status=Incident.Status.RESOLVED)
+        .order_by("created_at")
+        .first()
+    )
+    if inc is None:
+        return None
+    # Defensive guard: never resolve anything that looks like a traceback
+    # incident even if (impossibly) its signature collided.
+    if inc.suspect_file or inc.error_type != "MonitorBreach":
+        return None
+
+    inc.status = Incident.Status.RESOLVED
+    inc.resolved_at = timezone.now()
+    inc.save(update_fields=["status", "resolved_at"])
+
+    try:
+        Event.log(
+            f"✅ Monitor recovered — INC-{inc.number} auto-resolved",
+            project=getattr(deployment, "project", None),
+            actor="monitor",
+            level="success",
+            icon="check",
+            url=inc.get_absolute_url(),
+        )
+    except Exception as exc:  # pragma: no cover - defensive
+        print(f"[helm-obs] monitor recovery event log failed: {exc}")
+    return inc
+
+
 def evaluate_monitors(deployment):
     """Evaluate enabled monitors on ``deployment``; open incidents on breach.
 
@@ -529,11 +574,16 @@ def evaluate_monitors(deployment):
         return []
 
     org = _resolve_org(deployment)
+    now = timezone.now()
     # Cache rollups per window so multiple monitors don't recompute needlessly.
     cache: dict[int, dict] = {}
 
     for mon in monitors:
         try:
+            # Muted monitors open nothing AND recover nothing (purely time-based).
+            if mon.muted_until and mon.muted_until > now:
+                continue
+
             window = max(1, int(mon.window_minutes or 5))
             rolled = cache.get(window)
             if rolled is None:
@@ -541,6 +591,16 @@ def evaluate_monitors(deployment):
                 cache[window] = rolled
             value = _monitor_metric_value(rolled, mon.metric)
             if not mon.breaches(value):
+                # Not breaching: surgically auto-resolve THIS monitor's own
+                # MonitorBreach incident if it is still open (recovery). Never
+                # touch traceback/non-MonitorBreach incidents (crown-jewel safe).
+                try:
+                    _recover_monitor(mon, deployment, window)
+                except Exception as exc:  # pragma: no cover - one bad recovery != fatal
+                    print(
+                        f"[helm-obs] monitor {getattr(mon, 'pk', '?')} "
+                        f"recovery failed: {exc}"
+                    )
                 continue
 
             label = mon.get_metric_display()
@@ -551,10 +611,9 @@ def evaluate_monitors(deployment):
             # from error_type:error_message) dedupes repeated breaches into ONE
             # incident regardless of the fluctuating measured value. The live
             # value goes in the traceback instead (not part of the signature).
-            error_message = (
-                f"monitor:{mon.pk} {label} {mon.comparator_symbol} "
-                f"{mon.threshold} over {window}m"
-            )
+            # Built via the model helper so recovery can reproduce the exact
+            # same signature (see Monitor.breach_signature / _recover_monitor).
+            error_message = mon.breach_error_message(window)
             traceback = (
                 f"{title}\nmeasured {label} = {value} {mon.comparator_symbol} "
                 f"{mon.threshold} over {window}m"

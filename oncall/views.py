@@ -227,6 +227,90 @@ def tick(request, pk):
     return _action_response(request, incident)
 
 
+@org_required
+def change_severity(request, pk):
+    """Change an incident's severity (HTMX POST). Rejects invalid values."""
+    bad = _require_post(request)
+    if bad:
+        return bad
+    incident = _scoped_incident(request, pk)
+    new = (request.POST.get("severity") or "").strip()
+    if new not in Incident.Severity.values:
+        messages.error(request, f"Invalid severity '{new}'.")
+        return _action_response(request, incident)
+    incident.severity = new
+    incident.save(update_fields=["severity"])
+    timeline.record(
+        incident,
+        "severity_changed",
+        f"{request.user} changed severity to {new}",
+        actor=str(request.user),
+        user=request.user,
+    )
+    Event.log(
+        f"{request.user} changed INC-{incident.number} severity to {new}",
+        project=incident.project,
+        actor=str(request.user),
+        level="warning",
+        icon="alert",
+        url=f"/oncall/incidents/{incident.pk}/",
+    )
+    messages.success(request, f"Severity set to {new}.")
+    return _action_response(request, incident)
+
+
+@org_required
+def reopen(request, pk):
+    """Reopen a resolved incident (HTMX POST). No-op if not resolved."""
+    bad = _require_post(request)
+    if bad:
+        return bad
+    incident = _scoped_incident(request, pk)
+    if incident.status == Incident.Status.RESOLVED:
+        incident.status = Incident.Status.FIRING
+        incident.resolved_at = None
+        incident.save(update_fields=["status", "resolved_at"])
+        timeline.record(
+            incident,
+            "reopened",
+            f"{request.user} reopened INC-{incident.number}",
+            actor=str(request.user),
+            user=request.user,
+        )
+        Event.log(
+            f"{request.user} reopened INC-{incident.number}",
+            project=incident.project,
+            actor=str(request.user),
+            level="warning",
+            icon="incident",
+            url=f"/oncall/incidents/{incident.pk}/",
+        )
+        messages.success(request, f"Reopened INC-{incident.number}.")
+    return _action_response(request, incident)
+
+
+@org_required
+def board_tick(request):
+    """HTMX fragment: open-incidents list that auto-runs escalation ticks.
+
+    Iterates open (unacked) incidents in ``request.org`` and runs an
+    exception-safe escalation tick for each, then re-renders the partial. One
+    tick failure can never 500 the fragment.
+    """
+    incidents = (
+        scoped(Incident, request)
+        .select_related("project")
+        .exclude(status=Incident.Status.RESOLVED)
+        .order_by("-created_at")
+    )
+    for inc in incidents:
+        try:
+            escalation.tick(inc)
+        except Exception as exc:  # pragma: no cover - defensive
+            print(f"[helm-oncall] board_tick escalation failed: {exc}")
+    return render(request, "oncall/_open_incidents.html", {"incidents": incidents})
+
+
 def _action_response(request, incident):
     """For HTMX requests, return the timeline fragment; else redirect back."""
     if request.headers.get("HX-Request"):

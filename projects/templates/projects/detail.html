@@ -10,11 +10,24 @@
     <div class="muted mono small" style="word-break:break-all;">{{ project.repo_url|default:project.local_path }}</div>
     {% if project.description %}<div class="muted mt-8">{{ project.description }}</div>{% endif %}
   </div>
-  <div class="row gap-8">
+  <div class="row gap-8 wrap">
+    <span class="badge {{ health.badge_class }}"><span class="dot{% if health.verdict == 'live' %} dot-live{% endif %}"></span> {{ health.label }}</span>
     <span class="badge badge-neutral">{{ project.framework }}</span>
     <span class="badge badge-neutral mono">{{ project.default_branch }}</span>
     <span class="badge {{ project.status|status_badge }}">{{ project.get_status_display }}</span>
   </div>
+</div>
+
+<!-- Per-env health rollup + open-incident count (shared verdict helper) -->
+<div class="row gap-8 wrap mb-16">
+  {% for name, state in health.envs %}
+    <span class="badge {% if state == 'live' %}badge-success{% else %}badge-danger{% endif %}"><span class="dot{% if state == 'live' %} dot-live{% endif %}"></span> {{ name }} {{ state }}</span>
+  {% empty %}
+    <span class="badge badge-neutral">no active deployments</span>
+  {% endfor %}
+  {% if health.open_incident_count %}
+    <span class="badge badge-danger">{{ health.open_incident_count }} open incident{{ health.open_incident_count|pluralize }}</span>
+  {% endif %}
 </div>
 
 {% if project.status == 'failed' and project.import_log %}

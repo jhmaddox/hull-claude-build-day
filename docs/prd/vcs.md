@@ -1,152 +1,271 @@
-# PRD — Pull Requests (multitenant + UX)
+# PRD — Pull Requests (multitenant + UX) · Sprint 2
 
 Section owner: PM for `vcs/`
-Sprint: 1 (Build-out)
+Sprint: 2 (Operations / human-in-the-loop build-out)
 Status: Ready for builder
+Owns: `vcs/` only.
+
+> Sprint 1 shipped and is green: `PullRequest` is org-scoped, the review surface
+> has per-file diff, live CI polling, mergeability gating, conflict detection, and
+> a copy-permalink control (see git history + `vcs/tests.py`). **Do not regress
+> any of it.** This document is the Sprint-2 increment layered on top.
 
 ## Problem
 
-Hull's Pull Requests section (`vcs/`) is the review surface where the autonomous
-crew's work becomes mergeable change. Today it has three structural gaps:
+Pull Requests in Hull can today only be **born from the autonomous loop**:
+`vcs.services.open_pull_request(worktree, ...)` is called by `agents/services.py`
+after a Claude agent finishes work. There is no way for a **human org member** to
+participate in the PR workflow beyond merging:
 
-1. **Not org-scoped.** `vcs.PullRequest` has no `org` field and the list/detail
-   views (`vcs/views.py`) query `PullRequest.objects.all()` with no tenant
-   filter. In a multitenant deployment every org sees every other org's PRs and
-   can open their diffs and merge them. This violates the Sprint-1 tenancy
-   contract.
-2. **Thin review UX.** The detail page renders a single flat diff blob, a CI
-   badge, and a merge button. Reviewers cannot see CI as anything but a static
-   label, cannot see a per-file breakdown, cannot tell at a glance whether a PR
-   is safe to merge (CI passing? already merged? conflicting?), and the merge
-   button does not reflect mergeability.
-3. **Weak cross-linking.** The PR is the hub of the incident -> fix -> PR -> CI ->
-   merge story, but the list view doesn't surface CI/age, the detail view's links
-   are partial, and there is no copyable deep link for sharing a PR in chat/docs.
+1. **No manual PR creation.** A member who pushed a branch (or wants to propose a
+   change between two existing branches) cannot open a PR from the UI. Every PR
+   requires an `agents.Worktree`, which only the agent crew produces. This blocks
+   the "real teams operate the stack from one place" roadmap bar.
+2. **No close / reopen.** The model has a `CLOSED` status but nothing in the UI or
+   services can reach it. A PR that should be abandoned stays `OPEN` forever; the
+   list never clears.
+3. **No human review trail.** Everything is `author="claude-agent"`, and merge /
+   close record *what* happened but not *who* did it. There is no place to leave a
+   review note, so the human decision context is lost.
+4. **List has no triage affordances.** No status filter and no call-to-action to
+   open a PR — discoverability of the new manual flow is zero without it.
 
-We must close these gaps **without breaking the autonomous incident -> fix loop**,
-which opens PRs and merges them with **no request and no org** (`org=None`).
+All of this must land **without touching the autonomous incident → fix → PR → CI →
+merge loop**, which still opens and merges PRs with no request and `org=None`.
 
 ## Goals
 
-- Every PR belongs to an org; request paths only ever show/act on the current
-  org's PRs.
-- The autonomous loop keeps working unchanged: `open_pull_request`,
-  `refresh_diff`, `merge_pull_request` run org-agnostically and default `org=None`.
-- A reviewer can, on one screen: read the diff per-file, see live CI status,
-  understand mergeability, merge, and grab a shareable link.
+- A human org member can open a PR from the UI by choosing a project (org-scoped)
+  and a head + base branch, with the diff computed from real git.
+- A member can **close** an open PR and **reopen** a closed one, with the action
+  attributed to them.
+- A member can leave **review comments** on a PR; merge/close capture the acting
+  user so the decision trail is auditable.
+- The list lets a member **filter by status** and has a visible **New PR** CTA.
+- The autonomous loop is byte-for-byte behaviorally unchanged and all Sprint-1
+  rubric items still pass.
 
 ## Non-goals (scope-out, this sprint)
 
-- Inline line comments / review threads / approvals workflow.
-- Real GitHub/GitLab sync or webhooks.
-- Branch-protection rules, required reviewers, CODEOWNERS.
-- Conflict resolution UI (we only *detect & display* conflicts; resolution stays
-  manual via the agent).
-- Editing PR metadata (title/description) from the UI.
-- Cross-org PR transfer.
+- Approvals / required-reviewer / branch-protection / CODEOWNERS workflows.
+- Inline (per-line) diff comments or threaded replies — comments are PR-level only.
+- Real GitHub/GitLab sync, webhooks, or pushing branches to a remote.
+- Editing an existing PR's title/description/branches after creation.
+- Creating branches from the UI (you can only open a PR between branches that
+  already exist in the repo).
+- Cross-org PR transfer; deleting PRs.
 
 ## User stories
 
-- As an **org member**, I open `/vcs/` and see only my org's PRs, so other
-  tenants' work is invisible to me.
-- As a **reviewer**, I open a PR and see the diff split by file with per-file
-  add/del counts, so I can review large changes file by file.
-- As a **reviewer**, I click "Run CI" and watch the CI badge update from
-  pending -> running -> passed/failed without a full reload (HTMX poll), so I know
-  when it's safe to merge.
-- As a **reviewer**, I see whether a PR is mergeable (open + no conflicts) and the
-  Merge button is disabled with a reason when it isn't, so I don't attempt invalid
-  merges.
-- As a **teammate**, I copy a PR's permalink from the detail page to paste into an
-  incident/doc, so others can jump straight to the review.
-- As the **autonomous loop**, I open and merge PRs with no request context and it
-  still works end to end.
+- As an **org member**, I click "New PR", pick one of my org's projects and a head
+  and base branch, and Hull opens a real PR with the computed diff — scoped to my
+  org and attributed to me.
+- As a **reviewer**, I close an open PR I've decided against, and later reopen it if
+  I change my mind; the activity feed records who did it.
+- As a **reviewer**, I leave a comment on a PR explaining my decision, and see the
+  thread of comments (agent + human) in chronological order on the detail page.
+- As a **reviewer**, when I merge or close a PR while logged in, the PR records that
+  *I* performed the action (not the generic agent author).
+- As a **member triaging**, I filter the PR list to `open` / `merged` / `closed` and
+  see only those, and I can always reach the New PR form from the list.
+- As the **autonomous loop**, I open and merge PRs with no request, no acting user,
+  and `org=None`, exactly as before — nothing I rely on changed.
+
+## Current state → target
+
+| Capability | Current (Sprint 1) | Target (Sprint 2) |
+|---|---|---|
+| PR creation | agent loop only (`open_pull_request(worktree,…)`) | + manual `open_manual_pull_request(project, head, base, …)` via `/vcs/pr/new/` |
+| Branch discovery | n/a (worktree carries branch) | `list_branches(project)` git helper feeds the New-PR form |
+| Status transitions | OPEN → MERGED | + OPEN ⇄ CLOSED (close / reopen) |
+| Actor attribution | `author="claude-agent"`; merge/close anonymous | manual PR `author` = user; `merged_by` / `closed_by` recorded |
+| Review notes | none | `PullRequestComment` (org-scoped), shown + addable on detail |
+| List triage | flat open / other | status filter (`?status=`) + "New PR" CTA |
+| Org scoping | enforced (Sprint 1) | preserved on every new view/action (404 cross-org) |
+| Autonomous loop | works `org=None` | unchanged |
 
 ## Scope-in (MVP for this sprint)
 
-### A. Org-scoping (tenancy contract)
-- `vcs.PullRequest` subclasses `accounts.models.OrgScopedModel` (adds nullable
-  `org` FK + `OrgManager`). Migration is additive; existing rows get `org=NULL`.
-- `open_pull_request(...)` sets `pr.org = worktree.project.org` **if that attr
-  exists and is set**, else leaves `org=None`. Must not raise if `Project` has no
-  `org` yet (projects PM may land org-scoping in parallel) — use `getattr`.
-- `pr_list` and `pr_detail` (and all action views: CI, merge) are guarded by
-  `accounts.scoping.org_required` and filter by the current org using
-  `PullRequest.objects.for_org(request.org)` / `scoped(...)`. A PR whose `org`
-  differs from `request.org` returns **404** from detail/CI/merge.
-- Backward-compat fallback: PRs with `org=NULL` (legacy + autonomous-loop rows)
-  remain visible to a member whose org matches the PR's `project.org`, OR (if the
-  project has no org either) are shown to any authenticated org member. This keeps
-  the demo's autonomously-created PRs visible. (Implement via a queryset helper
-  in `vcs/services.py` or the view; documented and tested.)
+### A. Manual PR creation
+- New service `open_manual_pull_request(project, *, title, head_branch,
+  base_branch=None, description="", author="", org=None)` in `vcs/services.py`.
+  It reuses the existing `_compute_diff(repo, base, head)` and
+  `next_pr_number(project)`, sets `worktree=None`, and persists `org` from the
+  passed `org` (defaulting to `getattr(project, "org", None)`). Returns the PR,
+  or `None` if there is no diff (same contract as `open_pull_request`). Emits the
+  same `Event` (`icon="pr"`).
+- Existing `open_pull_request(worktree, …)` keeps its exact signature/behavior
+  (loop unaffected). The new function is **additive** and may share private
+  helpers but must not change the old one's params.
+- New git helper `list_branches(project)` in `vcs/services.py` returns the repo's
+  local branch names (best-effort; returns `[]` on any git error / missing
+  `local_path` — never raises).
+- New view `pr_new(request)` at `vcs:pr_new` (`/vcs/pr/new/`), `@org_required`:
+  - GET renders a form listing the current org's projects (scoped via
+    `accounts.scoping`) and, for a chosen/first project, its branches.
+  - POST validates project ∈ org, calls `open_manual_pull_request(project,
+    title=…, head_branch=…, base_branch=…, description=…,
+    author=request.user.get_username(), org=request.org)`, then redirects to the
+    new PR's detail (or re-renders with an error message if no diff / invalid).
+  - A project not in `request.org` → 404 / form error (never opens a PR for
+    another tenant).
 
-### B. Review UX
-- **Per-file diff:** `vcs/diffrender.py` gains a function that splits a unified
-  diff into a list of `{path, additions, deletions, html}` files; detail template
-  renders each file in its own collapsible `.card` with a per-file header showing
-  path and `+/-`. The existing `render_diff(diff_text)` signature stays (so the
-  autonomous loop / any caller is unaffected) — the new function is additive.
-- **Live CI:** a new HTMX fragment view `vcs:pr_ci_status` returns just the CI
-  badge; the detail page polls it (`hx-trigger="every 2s"`) while
-  `ci_status in (pending, running)` and stops polling otherwise. "Run CI" keeps
-  the existing fallback behavior (orchestration first, threaded fallback that
-  marks passed) — additive, no contract change.
-- **Mergeability:** detail view computes a `mergeable` boolean + `merge_blocked_reason`
-  (not open / already merged / git reports conflicts) and the Merge button is
-  disabled with the reason shown. Detecting conflicts uses a dry-run
-  `git merge --no-commit --no-ff` that is always aborted (read-only effect);
-  failures degrade gracefully to "mergeable unknown" (button enabled) so the loop
-  is never blocked.
-- **Copy permalink:** detail page shows the absolute PR URL
-  (`HELM_BASE_URL + pr.get_absolute_url()`) with a one-click copy button (minimal
-  vanilla JS, no framework).
+### B. Close / reopen
+- New services `close_pull_request(pr, *, actor="")` and
+  `reopen_pull_request(pr, *, actor="")` in `vcs/services.py`. Close: only from
+  `OPEN`; sets `status=CLOSED`, `closed_at`, `closed_by`; emits an `Event`
+  (`icon="pr"`, level warning). Reopen: only from `CLOSED`; back to `OPEN`,
+  clears `closed_at`. Both are idempotent-safe (no-op + return False if the
+  transition is invalid) and never raise.
+- New views `pr_close` / `pr_reopen` (`@org_required`, org-scoped queryset, POST,
+  CSRF), wired in `vcs/urls.py`, attributing the acting user.
+- Detail page shows a **Close** button on open PRs and a **Reopen** button on
+  closed PRs (design-system `.btn`).
 
-### C. List polish
-- List rows show CI badge (already present) plus relative age (`created_at`) and
-  remain scoped + clickable.
+### C. Lightweight human review trail
+- New model `PullRequestComment(OrgScopedModel)`: `pull_request` FK
+  (`related_name="comments"`), `author` (char), `body` (text),
+  `created_at`. Org nullable (loop safety), inherits `OrgManager`. Additive
+  migration only.
+- New fields on `PullRequest` (additive, all nullable/blank): `merged_by`,
+  `closed_by` (char), `closed_at` (datetime null). `merge_pull_request` gains an
+  **optional keyword** `actor=""` that, when supplied, fills `merged_by` — its
+  existing positional signature `merge_pull_request(pr)` must keep working so the
+  loop call site is unchanged.
+- New view `pr_comment` (`@org_required`, POST, CSRF, org-scoped): creates a
+  `PullRequestComment` with `author=request.user.get_username()`,
+  `org=request.org`, then redirects back to detail. Empty body → no-op + message.
+- Detail page renders comments newest-or-oldest in a clear order with author +
+  relative time, plus a textarea + submit using design-system classes.
+
+### D. List triage
+- `pr_list` accepts `?status=open|merged|closed` (default: open emphasised, all
+  others shown) and filters the org-scoped queryset accordingly; invalid/empty
+  value falls back to the current behavior.
+- The list header shows a **New PR** button linking to `vcs:pr_new`.
 
 ## Constraints / contracts to honor
-- Do NOT modify `accounts/models.py`, `helm/urls.py`, `helm/settings.py`,
-  `templates/base.html`, or other apps' files. Only edit files under `vcs/`.
-- Keep `vcs/services.py` function signatures stable: `next_pr_number`,
-  `open_pull_request`, `refresh_diff`, `merge_pull_request`.
-- Templates `{% extends "base.html" %}` only and use existing `helm.css` classes
-  (`card`, `badge`, `btn`, `diff`, `grid`, `stat`, `list-row`, `mono`, `muted`).
-  Load `{% load helm_extras %}` for `status_badge`.
+
+- Edit only files under `vcs/`. Do NOT modify `accounts/models.py`,
+  `helm/urls.py`, `helm/settings.py`, `templates/base.html`, or other apps' files.
+- Keep these `vcs/services.py` signatures stable (loop + Sprint-1 callers):
+  `next_pr_number(project)`, `open_pull_request(worktree, *, title, …)`,
+  `refresh_diff(pr)`, `merge_pull_request(pr)` (the `actor` addition must be an
+  optional keyword so `merge_pull_request(pr)` still works).
+- New tenant model `PullRequestComment` subclasses
+  `accounts.models.OrgScopedModel`; org stays nullable. New `PullRequest` fields
+  are additive and nullable/blank.
+- All new views are `@org_required` and operate on an org-scoped queryset
+  (reuse/extend the existing `_scoped_prs(request)` helper) so cross-org access
+  → 404, including the new create/close/reopen/comment paths.
+- Templates `{% extends "base.html" %}` only; use existing `helm.css` classes
+  (`card`, `badge`, `btn`, `btn-success`, `btn-sm`, `diff`, `grid`, `stat`,
+  `list-row`, `mono`, `muted`, `row`, `between`). Load `{% load helm_extras %}`.
+  No new external CSS/JS framework, no npm dependency.
 - All changes additive with fallbacks; the autonomous loop must pass unchanged.
-- `makemigrations vcs` only — do NOT run `migrate`. Validate with `manage.py check`.
+- `python manage.py makemigrations vcs` only — do NOT run `migrate`. Validate with
+  `python manage.py check`.
+- Preserve every Sprint-1 behavior + its rubric (org isolation, per-file diff,
+  live CI, mergeability, permalink). Existing `vcs/tests.py` must still pass.
 
 ## Rubric (numbered, machine-checkable pass/fail)
 
-1. `vcs.PullRequest` subclasses `accounts.models.OrgScopedModel`.
-   CHECK: `issubclass(__import__('vcs.models', fromlist=['PullRequest']).PullRequest, __import__('accounts.models', fromlist=['OrgScopedModel']).OrgScopedModel)` is `True`.
-2. `PullRequest` has a nullable `org` ForeignKey to `accounts.Org`.
-   CHECK: `PullRequest._meta.get_field('org')` is a `ForeignKey` to `accounts.Org` with `null=True`.
-3. A new additive migration exists under `vcs/migrations/` adding the `org` field; `python manage.py makemigrations vcs --check --dry-run` reports no missing migrations.
-4. `python manage.py check` exits 0 with no errors.
-5. `accounts/models.py` is byte-for-byte unchanged from HEAD (`git diff --quiet HEAD -- accounts/models.py`). Likewise `helm/urls.py`, `helm/settings.py`, `templates/base.html` unchanged.
-6. `vcs/services.py` still defines `next_pr_number`, `open_pull_request`, `refresh_diff`, `merge_pull_request` with their existing call signatures (params unchanged); importing `vcs.services` raises no error.
-7. `open_pull_request` sets `pr.org` from `worktree.project.org` when present and does NOT raise when the project has no `org` attribute or it is `None` (uses `getattr` with default). Verified by a test where `project.org` is unset/None -> PR created with `org=None`, no exception.
-8. `open_pull_request` and `merge_pull_request` work with `org=None` end to end (autonomous-loop path): a test opens a PR from a worktree with no org and merges it successfully (status becomes `merged`).
-9. `pr_list` view is wrapped by `accounts.scoping.org_required` (or otherwise redirects unauthenticated/orgless users) — an anonymous GET to `/vcs/` does not return 200 with another org's PRs.
-10. Org isolation: given PRs in org A and org B, a request authenticated as an org-A member sees org-A PRs in the `/vcs/` list and does NOT see org-B PRs. Verified by a Django test client test (response contains A's PR title, not B's).
-11. Cross-org detail access is blocked: GET `/vcs/pr/<pk>/` for a PR belonging to a different org returns 404 (not 200). Same for the CI and merge action POSTs.
-12. Legacy/loop fallback: a PR with `org=NULL` whose `project.org` matches the member's org (or whose project also has no org) is visible to that member's list/detail. Verified by test.
-13. `vcs/diffrender.py` exposes a new additive function (e.g. `split_diff(diff_text)` or `render_files(diff_text)`) returning per-file structures each with `path`, `additions`, `deletions`, and rendered HTML; the original `render_diff(diff_text)` still exists and returns safe HTML for a non-empty diff.
-14. The PR detail page renders a per-file diff: for a multi-file PR the response HTML contains a distinct file header/section per changed file (e.g. one `.card`/file-head per file path), not a single flat blob.
-15. A CI-status fragment endpoint exists (named url under `app_name='vcs'`, e.g. `vcs:pr_ci_status`) and returns just a CI badge for the given PR; it is org-scoped (404 for cross-org).
-16. The detail template wires HTMX polling of the CI fragment that is active only while `ci_status` is `pending`/`running` (template contains `hx-get` to the fragment with an `every`-based `hx-trigger`).
-17. Mergeability gating: the detail template renders the Merge button `disabled` when the PR is not open (status != `open`), and the view/context exposes a `mergeable` boolean and a human-readable block reason.
-18. Conflict detection is read-only: the mergeability check never leaves the repo in a merged/dirty state (any dry-run merge is aborted) and never raises out of the view; a test verifies the repo HEAD/working tree is unchanged after rendering detail for a conflicting PR, and the page still loads (200).
-19. The detail page shows a copyable absolute permalink to the PR (string containing `pr.get_absolute_url()` value, full URL using `HELM_BASE_URL`) with a copy control; copy uses minimal vanilla JS only (no new JS framework / no npm dependency added).
-20. Activity feed integrity: opening and merging a PR still emit `core.models.Event` entries with `icon='pr'` (open) and `icon='merge'` (merge) as before (events not removed).
-21. All `vcs/` templates extend `base.html` (`{% extends "base.html" %}`) and add no `<link>`/`<script>` to external CSS/JS frameworks.
-22. Test suite: `python manage.py test vcs` passes (new tests included), and no existing test in the repo regresses.
+1. `python manage.py check` exits 0 with no errors.
+2. `accounts/models.py`, `helm/urls.py`, `helm/settings.py`, `templates/base.html`
+   are byte-for-byte unchanged from HEAD (`git diff --quiet HEAD -- <path>` for
+   each). Only files under `vcs/` (and `docs/prd/vcs.md`) are modified.
+3. `python manage.py makemigrations vcs --check --dry-run` reports **no missing
+   migrations** (i.e. the builder committed the additive migration); a new
+   migration file exists under `vcs/migrations/`.
+4. `vcs/services.py` still defines `next_pr_number`, `open_pull_request`,
+   `refresh_diff`, `merge_pull_request`; `merge_pull_request(pr)` is still callable
+   with a single positional arg (no required new params). Importing `vcs.services`
+   raises no error.
+5. The autonomous-loop path is intact: a test opens a PR via
+   `open_pull_request(worktree, title=…)` with `worktree.project.org=None` and
+   merges it via `merge_pull_request(pr)` (single positional) → `status=='merged'`,
+   `org is None`, no exception. (Sprint-1 loop test still passes.)
+6. New service `open_manual_pull_request` exists in `vcs/services.py` and, given a
+   project whose repo has a head branch diffing from base, creates a `PullRequest`
+   with `worktree is None`, the passed `author`, the passed/derived `org`, a
+   non-empty `diff`, and correct `files_changed/additions/deletions`. Returns
+   `None` when there is no diff between the two branches.
+7. `open_manual_pull_request` sets `pr.org` to the explicitly passed `org`, and
+   when `org` is omitted falls back to `getattr(project, "org", None)` without
+   raising for an org-less project.
+8. `list_branches(project)` exists, returns a list of branch-name strings for a
+   real repo (containing at least the repo's branches), and returns `[]` (no
+   exception) when `project.local_path` is empty/invalid.
+9. A `vcs:pr_new` URL exists (`/vcs/pr/new/`). GET as an authenticated org member
+   returns 200 and the form lists only the current org's projects (a project from
+   another org does NOT appear in the response). Anonymous GET does not return 200
+   with the form (redirects via `org_required`).
+10. POST to `vcs:pr_new` with a valid in-org project + head/base branches that
+    diff creates a PR scoped to `request.org` with `author` derived from the user,
+    and redirects to that PR's detail (302 → `/vcs/pr/<pk>/`). The created PR is
+    visible to that member and 404s for a member of another org.
+11. POST to `vcs:pr_new` referencing a project that belongs to a **different** org
+    does not create a PR for the requester and does not leak/modify the other
+    org's data (form error or 404; no `PullRequest` created with the other org's
+    project under `request.org`).
+12. `PullRequest` has additive fields `closed_at` (nullable datetime),
+    `closed_by` (char/blank) and `merged_by` (char/blank); none is required at the
+    DB level (existing rows / loop creates remain valid with them unset).
+13. `close_pull_request(pr, actor=…)` exists: on an OPEN pr it sets
+    `status=='closed'`, populates `closed_at` and `closed_by`, emits a
+    `core.models.Event`, and returns truthy; on a non-open pr it is a no-op
+    returning falsey and never raises.
+14. `reopen_pull_request(pr, actor=…)` exists: on a CLOSED pr it sets
+    `status=='open'`, clears `closed_at`, emits an Event, returns truthy; on a
+    non-closed pr no-ops + returns falsey, never raises.
+15. `vcs:pr_close` and `vcs:pr_reopen` URLs exist, are `@org_required`, accept POST
+    with CSRF, are org-scoped (cross-org POST → 404), and set
+    `closed_by`/`merged-by`-style attribution from the acting user. A member can
+    close their own org's open PR (status becomes `closed`) and reopen it.
+16. Detail page renders a **Close** action for an open PR and a **Reopen** action
+    for a closed PR (response HTML contains a form posting to `vcs:pr_close` for an
+    open PR and to `vcs:pr_reopen` for a closed PR).
+17. New model `PullRequestComment` subclasses `accounts.models.OrgScopedModel`,
+    has a `pull_request` FK with `related_name="comments"`, an `author`, a `body`,
+    and a `created_at`, and a nullable `org` FK (loop safety).
+18. `vcs:pr_comment` URL exists (`@org_required`, POST, CSRF, org-scoped): posting a
+    non-empty body as an in-org member creates a `PullRequestComment` linked to the
+    PR with `author` from the user and `org==request.org`, then redirects to detail;
+    an empty body creates no comment. Cross-org POST → 404.
+18b. The PR detail page renders existing comments (author + body + relative time)
+    and a comment form (textarea posting to `vcs:pr_comment`).
+19. `merge_pull_request` accepts an optional keyword `actor` that, when provided,
+    fills `merged_by`; called from `pr_merge` it records the acting user, and called
+    as `merge_pull_request(pr)` (loop) it still merges with `merged_by` blank/None.
+20. `pr_list` honors `?status=open|merged|closed`: a request with
+    `?status=closed` shows closed PRs and not open ones (and vice-versa), all still
+    org-scoped; the list header contains a link/button to `vcs:pr_new` ("New PR").
+21. Org isolation preserved across ALL new views: for `pr_new` (POST), `pr_close`,
+    `pr_reopen`, `pr_comment`, a request acting on a PR/project from another org
+    returns 404 (or equivalently refuses + creates nothing), never 200-with-effect.
+22. Sprint-1 behavior preserved: per-file diff cards, the `vcs:pr_ci_status`
+    fragment + HTMX `every`-trigger poll, mergeability gating (disabled Merge button
+    + reason), read-only conflict detection (repo unchanged after rendering detail),
+    and the copyable absolute permalink all still render on the detail page.
+23. Activity-feed integrity: opening (manual or loop) emits an `Event` with
+    `icon='pr'`; merging emits `icon='merge'`; closing emits an `Event`. No existing
+    Event emission removed.
+24. All `vcs/` templates `{% extends "base.html" %}` and add no `<link>`/`<script>`
+    to an external CSS/JS framework or npm dependency. Any copy/clipboard JS stays
+    minimal vanilla.
+25. `python manage.py test vcs` passes, including new tests for manual creation,
+    close/reopen, and comments, and **no Sprint-1 `vcs` test regresses**.
 
 ## Open questions / risks
-- `Project.org` may or may not land this sprint (projects PM owns it). Mitigation:
-  all org derivation uses `getattr(project, 'org', None)` and tolerates absence.
-- Conflict dry-run mutates the working tree transiently; must run on the project
-  repo carefully and always `git merge --abort`. If the repo is in a detached or
-  dirty state, skip detection and report "unknown" (button enabled) rather than
-  blocking the loop.
+
+- `request.user.get_username()` is the attribution source; if a builder prefers
+  `request.user.email`, either is acceptable as long as attribution is non-empty
+  and stable. Loop path passes no actor → fields stay blank/None.
+- `list_branches` reads the project repo with git; on a bare/missing repo it must
+  degrade to `[]` so the New-PR form still renders (member simply has no branches
+  to pick — show an inline "no branches found" hint).
+- A manual PR points `worktree=None`; `merge_pull_request` already guards
+  `if pr.worktree_id:` before touching a worktree, so merging a manual PR is safe —
+  the builder must NOT introduce an unguarded `pr.worktree` access.
+- Keep the conflict dry-run / mergeability logic exactly as Sprint 1 (always
+  `git merge --abort`); manual PRs flow through the same `_mergeability` path.

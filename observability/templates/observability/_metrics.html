@@ -1,8 +1,9 @@
 {% load helm_extras %}
 <div id="metrics-{{ deployment.pk }}"
-     hx-get="/obs/deployment/{{ deployment.pk }}/metrics/"
+     hx-get="/obs/deployment/{{ deployment.pk }}/metrics/?window={{ window_minutes }}"
      hx-trigger="every 5s"
      hx-swap="outerHTML">
+  <div class="muted small mb-8">Showing the last <strong>{{ window_minutes }}m</strong> · auto-refresh 5s</div>
   <div class="grid grid-4 mb-16">
     <div class="card stat">
       <div class="label muted small">REQ RATE</div>

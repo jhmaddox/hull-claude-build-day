@@ -1,177 +1,233 @@
 # PRD — Accounts & User Management ("helm" / Hull)
 
 Owner: Section PM — Accounts & User Management
-Sprint: 1 (Build-out)
+Sprint: 1 (Build-out, iteration 2)
 Section owns: `accounts/` (extend the existing skeleton — do **not** modify `accounts/models.py`,
 `accounts/scoping.py`, or `accounts/middleware.py`; those are the Mayor-owned tenancy contract).
 
 ---
 
-## 1. Problem
+## 0. Current state (what the previous sprint already shipped)
 
-Hull already has the tenancy *plumbing* — `Org`, `Membership`, `Invitation` models, a
-`CurrentOrgMiddleware` that sets `request.org`, and an `org_required` decorator. But there is
-**no enterprise-facing surface** to operate a tenant:
+The accounts section is **not** a greenfield. The prior iteration shipped and is `check`-clean
+(`python manage.py check` → 0 issues; `makemigrations accounts --check` → no changes):
 
-- An owner cannot see who is in their org, cannot change anyone's role, cannot remove anyone.
-- There is no way to invite a teammate — `Invitation` exists in the DB but nothing creates or
-  accepts one. Onboarding a colleague today requires hitting the Django admin.
-- A user who belongs to multiple orgs has a `switch_org` view but **no UI** to reach it — they
-  are silently pinned to whatever the middleware picked.
-- There is no org-settings page (rename org, see the slug) and no profile page (change your own
-  name / email / password).
-- RBAC roles exist as data but are never *enforced* in the UI — a viewer sees the same write
-  controls as an owner.
+- Auth: `signup`, `login`, `logout`, `onboarding` (creates first org + OWNER membership).
+- Members: `/accounts/members/` roster (org-scoped), `change_role`, `remove_member`, with a
+  **last-owner guard** and an "admins cannot touch owners" guard, RBAC-gated by `require_org_admin`.
+- Invitations: `/accounts/invitations/` create + list (pending/accepted) + `revoke_invite`;
+  token accept at `/accounts/invite/<token>/` (idempotent, respects `unique_together(org,user)`).
+- Org settings: `/accounts/org/` (rename, slug read-only). Profile: `/accounts/profile/`
+  (name/email + password change).
+- Org switcher partial `accounts/_org_switcher.html`, wired into the **accounts pages only** via
+  `_account_base.html` `{% block actions %}`; `switch_org` view exists.
+- RBAC helpers `accounts/permissions.py` (`is_org_admin`, `require_org_admin`), server-side gated.
 
-For an "enterprise org/user management" section this is the table-stakes gap. This sprint closes
-it without touching the tenancy contract and without ever risking the autonomous
-incident→fix loop (the loop runs with no request, `org=None`; all our changes are request-path
-only and additive).
+So the old rubric (R1–R20) is satisfied. **This PRD targets the next-highest-impact layer**, not
+a re-build. Builders MUST keep all existing routes/behaviour green (Section 9 regression rubric)
+and only add on top.
+
+## 1. Problem (remaining gaps for an enterprise org/user surface)
+
+1. **The org switcher is not actually global.** It only renders on `/accounts/*` pages because each
+   section fills its own `{% block actions %}` and accounts cannot edit `base.html` or other apps'
+   templates. A multi-org operator on the dashboard, Projects, Incidents, etc. has **no way to
+   switch tenants** — the explicit "reachable from every authenticated page" goal is half-met.
+2. **`switch_org` has an open-redirect / fragile redirect.** It redirects to raw
+   `request.META['HTTP_REFERER']` with no allow-list, and a member can attempt to switch to an org
+   they don't belong to only being saved by `get_object_or_404` (404, not a clean message).
+3. **No self-service membership.** A member cannot **leave** an org they belong to; everything is
+   admin-driven. There is also no **transfer-ownership** affordance beyond manually promoting then
+   demoting — risky around the last-owner guard.
+4. **Membership changes are invisible.** Role changes, removals, invites, and accepts emit nothing
+   to the activity feed, so the demo's "narrate everything" story skips all tenant administration.
+5. **Members page doesn't surface pending invites or counts**, so admins jump between two pages to
+   understand "who's in / who's coming".
+6. **Profile is thin** — no display name shown back in the UI (the switcher/member rows always show
+   `username`), and no "your role in each org" overview.
+
+These are all request-path, additive concerns. None touch the tenancy contract or the autonomous
+incident→fix loop (which runs with no request and `org=None`).
 
 ## 2. Goals / Non-goals
 
-**Goals (this sprint)**
-- A real members management surface: list members, change roles, remove members — RBAC-gated.
-- Invitations: an admin/owner can create an invite; an invitee can accept it via a token link
-  and become a member.
-- Org settings (rename) and a personal profile page (name/email/password).
-- An org switcher reachable from every authenticated page (top-nav actions slot).
+**Goals (this iteration)**
+- Make the org switcher reachable from **every** authenticated page, using only files `accounts`
+  owns (an `accounts` context processor + a reusable, self-contained partial) — no edits to
+  `base.html`, `helm/settings.py`, `helm/urls.py`, or other apps.
+- Harden `switch_org`: only switch to orgs the user belongs to; safe same-host redirect; clear
+  message; works for GET (link) so it can live in the switcher menu.
+- Self-service: a member can **leave** an org (blocked for the last owner); an owner can **transfer
+  ownership** to another member in one action (atomic, last-owner-safe).
+- Emit `core.Event.log(...)` activity-feed entries for the meaningful tenant actions (invite
+  created, invite accepted, role changed, member removed, member left, ownership transferred, org
+  renamed) — wrapped so a logging failure never breaks the action.
+- Members page shows the pending-invite count and a compact pending list inline.
+- Profile shows display name + a read-only "your organizations & roles" list.
 
 **Non-goals (explicitly deferred)**
-- SSO / SAML / OIDC, email delivery of invites (we surface the link in-app instead).
-- Billing, seat limits, custom roles/permissions beyond the 4 existing roles.
-- Audit log (owned by the Enterprise section), API keys.
-- Editing the tenancy contract files or adding cross-org sharing.
+- SSO / SAML / OIDC, real email/SMTP delivery of invites (link is surfaced in-app), 2FA, password
+  reset email flow.
+- Billing, seat limits, custom roles or granular per-resource permissions beyond the 4 roles.
+- Audit log persistence model (Enterprise section owns that) — we only emit to the existing
+  `core.Event` feed, additively.
+- Org deletion, cross-org resource sharing, editing any tenancy-contract file or any other app.
 
 ## 3. Users & user stories
 
-- **Owner** — "I can rename my org, invite teammates with a chosen role, promote/demote members,
-  and remove people. I can never be locked out (cannot remove/demote the last owner)."
-- **Admin** — "I can manage members and invitations like an owner, but I cannot remove an owner
-  or delete the org."
-- **Member / Viewer** — "I can see the member roster and my profile, switch between orgs I belong
-  to, but I do not see management controls."
-- **Invitee** — "I follow an invite link, sign in or sign up, accept, and land in the org."
-- **Multi-org user** — "I switch the active org from the top nav and every section re-scopes."
+- **Operator (any role), anywhere in Hull** — "From any page I can see which org I'm acting in and
+  switch to another org I belong to; the whole app re-scopes."
+- **Owner** — "I can hand the org to a teammate in one click (transfer ownership) without risking
+  locking myself out, and I see tenant changes show up in the activity feed."
+- **Member / Viewer** — "I can leave an org I no longer need; I cannot leave one where I'm the last
+  owner."
+- **Admin** — "On the members page I see who's pending so I don't bounce between tabs."
+- **Auditor / demo viewer** — "Tenant administration (invites, role changes, ownership transfer)
+  appears in the activity feed so the system narrates itself."
 
-## 4. Scope-in (MVP feature set)
+## 4. Scope-in (MVP feature set this iteration)
 
-1. **Members list** at `/accounts/members/` — roster of the current org (`request.org`) with
-   username/email, role badge, joined date. Org-scoped: only the current org's memberships.
-2. **Role management** — owner/admin can change a member's role via a POST; protected so the
-   **last owner cannot be demoted** and a non-owner cannot create/elevate to a role above their
-   own authority (admins cannot touch owners).
-3. **Remove member** — owner/admin can remove a member via POST; the **last owner cannot be
-   removed**; users may also remove (leave) handled as removing self is out of MVP — removal is
-   admin-driven only.
-4. **Invitations** — create at `/accounts/invitations/` (email + role), generating a unique
-   `token`; list pending/accepted invites for the org; **revoke** a pending invite. The accept
-   link `/accounts/invite/<token>/` is shown in-app (copyable) since email is out of scope.
-5. **Accept invite** — visiting `/accounts/invite/<token>/`: if logged-out, send through
-   login/signup then back; on accept, create a `Membership` for the invite's org+role, mark the
-   invite `accepted_at`, set it as the active org, redirect to dashboard. Idempotent: an
-   already-accepted or already-member token does not create duplicates (unique_together on
-   `(org,user)` is respected, no 500).
-6. **Org settings** at `/accounts/org/` — owner/admin can rename the org; slug shown read-only.
-7. **Profile** at `/accounts/profile/` — any authenticated user edits first/last name + email and
-   changes password (Django `set_password`, re-login not required).
-8. **Org switcher** — a control rendered in the top-nav `actions` block on accounts pages (and
-   reusable include) listing the user's memberships; selecting one calls the existing
-   `accounts:switch_org` and re-scopes. Shows the active org name.
-9. **RBAC gating helper** — a small in-app permission check (e.g. `request.membership.can_admin`,
-   which the contract already exposes) used to hide/disable management controls for
-   member/viewer and to 403/redirect on direct POSTs.
+1. **Global org switcher** — add `accounts/context_processors.py:account_nav(request)` exposing
+   `account_memberships` (the user's memberships) and `current_org` for templates. Refactor
+   `_org_switcher.html` to be fully self-contained (no dependency on accounts-only context) so any
+   section *can* `{% include "accounts/_org_switcher.html" %}`. Provide an always-reachable
+   **account menu page** `/accounts/` (org switcher + links) as the guaranteed entry point from the
+   topbar/sidebar that does not require editing base.html. The switcher highlights the active org.
+   > Note: because `accounts` cannot edit `base.html` or register a context processor in
+   > `settings.py` itself, the builder MUST coordinate the single context-processor registration
+   > with the integrator/enterprise owner (one line), OR fall back to the self-contained partial +
+   > `/accounts/` hub. Either path satisfies the rubric; pick the one that keeps `check` green.
+2. **Harden `switch_org`** — accept GET; only switch to an org where the user has a `Membership`
+   (else `messages.error` + redirect, **no 404/500**); redirect only to a **safe same-host** URL
+   (use `django.utils.http.url_has_allowed_host_and_scheme`) falling back to `core:dashboard`.
+3. **Leave org** — `POST /accounts/leave/` removes `request.user`'s membership in `request.org`;
+   **blocked if they are the last owner** (`messages.error`, no-op); on success, switch the active
+   org to another membership (or onboarding if none) and emit an Event. Self-removal only; does not
+   touch other members.
+4. **Transfer ownership** — `POST /accounts/members/<id>/transfer/` (owner-only): promote target to
+   OWNER and demote the acting owner to ADMIN **atomically** (`transaction.atomic`), so the org
+   never has zero owners at any point. Rejected for non-owners server-side.
+5. **Activity-feed emission** — at each meaningful action (invite created, invite accepted, role
+   changed, member removed, member left, ownership transferred, org renamed) call
+   `core.models.Event.log(verb, actor=<username>, level=..., icon="agent"/"check"/...)`. Wrap in a
+   `try/except` so a feed failure never breaks the tenant action. Import lazily to avoid load-order
+   issues.
+6. **Members page enrichment** — show the count of pending invitations and a compact inline list of
+   pending invites (email + role + revoke) on `/accounts/members/` for admins, and a "Transfer
+   ownership" / "Leave org" control where applicable, all RBAC-gated.
+7. **Profile enrichment** — render the user's display name (first+last, falling back to username)
+   and a read-only "Your organizations" table (org name + your role badge), each linking to
+   `switch_org`.
 
 All new request paths use the contract: `@org_required` / `login_required`,
-`Membership.objects.filter(org=request.org)` (or `for_org`), and operate on `request.org`.
-No new model is required (the three tenancy models already exist); if any helper model is
-added it must subclass `accounts.models.OrgScopedModel` and keep `org` nullable.
+`Membership.objects.filter(org=request.org)` (or `.for_org`), operate on `request.org`. **No new
+model is introduced.** If any helper model were ever needed it must subclass
+`accounts.models.OrgScopedModel` and keep `org` nullable — but this iteration adds none.
 
-## 5. Scope-out (this sprint)
+## 5. Scope-out (this iteration)
 
-- Email/SMTP delivery, invite expiry/resend cadence, bulk invite.
-- SSO, 2FA, password reset email flow (profile password change only).
-- Custom roles/granular permissions, per-resource ACLs.
-- Org deletion, transfer ownership flow beyond promote-to-owner.
-- Audit log entries (Enterprise section) — though emitting `core.Event.log` is encouraged where
-  natural and is not penalized.
+- Email/SMTP delivery, invite expiry/resend cadence, bulk invite, invite-by-link-without-account.
+- SSO, 2FA, password-reset email, custom roles/granular permissions, per-resource ACLs.
+- Org deletion; multi-step ownership transfer with confirmation emails.
+- A persisted audit-log model (Enterprise owns it) — we only emit to `core.Event`.
+- Editing the tenancy contract, `base.html`, `helm/urls.py`, `helm/settings.py`, or any other app's
+  files (the one context-processor registration line, if used, is coordinated with the integrator).
 
 ## 6. Design / constraints
 
-- Every page `{% extends "base.html" %}`; use only `static/css/helm.css` classes (cards, badge,
-  btn, list-row, table, field, grid-*). Dark premium look. Do **not** edit `base.html`,
-  `helm/urls.py`, or `helm/settings.py`.
-- Org switcher must live in the `{% block actions %}` topbar slot (base.html has no nav slot for
-  it) and/or a reusable `{% include %}` partial so other sections can drop it in.
-- Keep all changes **additive**; never break or modify the autonomous loop contracts
-  (`deploys/observability/orchestration/agents` services). The loop runs with `org=None`.
+- Every page `{% extends "base.html" %}` (or `accounts/_account_base.html` → base) and uses only
+  `static/css/helm.css` classes (card, badge, btn, list-row, table, field, grid-*, empty, toast,
+  pill). Dark premium look. The switcher's tiny vanilla-JS toggle is allowed (already present); **no
+  new CSS/JS framework or external UI `<link>`/`<script>`**.
+- All write actions are POST + `{% csrf_token %}` and **server-side RBAC-gated** (not just hidden).
+- Keep everything **additive**: do not change existing route names, signatures, or behaviour that
+  the old rubric (Section 9) locks in. The autonomous loop contracts
+  (`deploys/observability/orchestration/agents` services) are untouched; `org` stays nullable; no
+  service-layer call is made to require a request.
+- `core.Event.log` calls are best-effort (`try/except`) and lazily imported.
 - Validate with `python manage.py check`; you MAY run `python manage.py makemigrations accounts`
-  but must **not** run `migrate` (integrator owns the shared DB). Smoke-test on port 8011+.
+  but must **not** run `migrate`. Smoke-test on port 8011+ and kill it.
 
 ---
 
-## 7. Machine-checkable rubric (pass/fail)
+## 7. Machine-checkable rubric (pass/fail) — this iteration
 
-Each item is independently verifiable. "Authed admin" = a logged-in user whose membership in the
-active org has role owner or admin. "Authed viewer" = role member or viewer.
+Each item is independently verifiable. "Authed admin" = logged-in user whose membership in the
+active org is owner/admin. "Authed viewer" = role member/viewer. Use Django test client / shell.
 
-R1. `accounts/urls.py` registers named routes: `members`, `org_settings`, `profile`,
-    `invitations`, and an invite-accept route taking a token (e.g. `accept_invite`). Each
-    reverses without error.
-R2. `GET /accounts/members/` returns HTTP 200 for an authed user with an org and lists exactly the
-    `Membership` rows of `request.org` (no rows from any other org appear).
-R3. The members list renders each member's role using a `badge` class and shows username/email and
-    a joined/created date.
-R4. `accounts/models.py`, `accounts/scoping.py`, and `accounts/middleware.py` are **unchanged**
-    from the contract (byte-for-byte identical to the skeleton; no edits in the diff).
-R5. A POST to change a member's role succeeds (302/200 + DB role updated) when performed by an
-    authed admin/owner, and is rejected (403, redirect, or no-op with the role unchanged) when
-    performed by an authed viewer/member.
-R6. Demoting or removing the **last remaining owner** of an org is prevented: the operation does
-    not reduce the org's owner count to zero (role/membership unchanged) and returns a
-    user-facing error message rather than a 500.
-R7. `GET /accounts/invitations/` (authed admin) returns 200 and a POST with an email + role
-    creates an `Invitation` row scoped to `request.org` with a non-empty unique `token` and
-    `accepted_at` null.
-R8. The invitations page surfaces the accept URL for each pending invite (a link/text containing
-    the token) so it can be copied (email delivery is out of scope).
-R9. `GET /accounts/invite/<token>/` for a logged-in user whose email/account is not yet a member
-    creates a `Membership` for the invite's org and role, sets the invite's `accepted_at`, and
-    redirects into the app (302). A second visit to the same token does not create a duplicate
-    membership and does not 500 (idempotent).
-R10. Invite acceptance respects the contract uniqueness: no `IntegrityError`/500 if the user is
-     already a member of that org.
-R11. `GET /accounts/org/` (authed admin) returns 200; a POST renaming the org updates `Org.name`
-     for `request.org` only; the slug field is displayed but not changed by the rename.
-R12. Org settings write actions (rename) are RBAC-gated: an authed viewer/member cannot change the
-     org name (403/redirect/no-op, name unchanged).
-R13. `GET /accounts/profile/` returns 200 for any authed user; a POST updating first/last name and
-     email persists to the `User`; a POST changing the password results in the new password
-     authenticating (and the old one not).
-R14. An org switcher UI is reachable from authenticated accounts pages: it lists the current
-     user's memberships (org names) and each option links to / posts to `accounts:switch_org`
-     with the corresponding org id. The active org is visually indicated.
-R15. Switching org via `accounts:switch_org` changes `request.session['org_id']` and subsequently
-     `request.org`, so an org-scoped list (e.g. members) reflects the newly active org.
-R16. Every new view is access-controlled: unauthenticated `GET` of `members`, `invitations`,
-     `org`, `profile` redirects to login (302 to `LOGIN_URL`); org-required views redirect a
-     user with no org to `accounts:onboarding`.
-R17. All new templates `{% extends "base.html" %}` and introduce **no** new CSS/JS framework
-     (no `<link>`/`<script>` to external UI libs beyond what base.html already loads).
-R18. `python manage.py check` exits 0 with the changes applied, and `makemigrations accounts
-     --check` reports no missing migrations (any model/help additions are migrated).
-R19. The autonomous loop contracts are untouched: no edits to `deploys/services.py`,
-     `observability/services.py`, `orchestration/service.py`, `agents/services.py`, and no
-     accounts code makes `org` non-nullable or requires a request for service-layer calls.
-R20. RBAC controls are not merely hidden: directly POSTing a management action
-     (role change / remove / rename / invite create / revoke) as an authed viewer/member is
-     rejected server-side (not just hidden in the template).
+N1. `accounts/context_processors.py` defines a callable (e.g. `account_nav(request)`) that returns a
+    dict including the current user's memberships (org names reachable) and the current org; it does
+    not raise for an anonymous request (returns an empty/default dict).
+N2. `accounts/_org_switcher.html` is self-contained: it renders the list of the user's memberships
+    and an active-org indicator using only `request`/context it provides, such that an arbitrary
+    template can `{% include "accounts/_org_switcher.html" %}` without extra view context. (Check:
+    the include references no variable that only an accounts view sets.)
+N3. There is an always-reachable account hub at `GET /accounts/` (HTTP 200 for an authed user) that
+    contains the org switcher and links to members/invitations/org settings/profile.
+N4. `switch_org` accepts a **GET** request and, for an org the user is a member of, sets
+    `request.session['org_id']` to that org and redirects (302). (No 404/405 on the documented path.)
+N5. `switch_org` to an org the user is **not** a member of does **not** change the session org and
+    does **not** 500; it returns a redirect with a user-facing error message (or 302/200 no-op).
+N6. `switch_org`'s post-switch redirect target is validated as same-host (rejects an external
+    `next`/referer host), falling back to a safe internal URL (e.g. `core:dashboard`).
+N7. `POST /accounts/leave/` by a non-last-owner member removes exactly that user's `Membership` in
+    `request.org` (DB row gone), leaves other members untouched, and redirects (302).
+N8. `POST /accounts/leave/` by the **last owner** of the org is rejected: the membership still
+    exists afterward, owner count is unchanged, and a user-facing error is shown (no 500).
+N9. `POST /accounts/members/<id>/transfer/` by an **owner** promotes the target to OWNER and demotes
+    the acting owner to ADMIN; afterward the org has **≥ 1 owner** and the target's role is owner
+    (verify in DB). The operation is atomic (on any failure, neither role changes).
+N10. The transfer action is RBAC-gated: an authed admin/viewer/member POSTing it is rejected
+     server-side (role unchanged, redirect/error, no 500).
+N11. `core.models.Event.log` is invoked for at least: invite created, invite accepted, role changed,
+     member removed, member left, ownership transferred, and org renamed. (Check: each action path
+     calls `Event.log`; verify a new `Event` row appears after performing one such action via the
+     test client.)
+N12. Every `Event.log` call site is wrapped so that if logging raises, the underlying tenant action
+     still completes successfully (simulate by asserting the action's DB effect persists even if
+     `Event.log` is monkeypatched to raise).
+N13. `GET /accounts/members/` for an authed admin shows the **pending invitation count** and a
+     pending-invite list (each with email + role); the data shown is scoped to `request.org` only.
+N14. The members page exposes a "Transfer ownership" control only to owners and a "Leave org"
+     control to the current user, and both controls are absent for users without the right (template
+     gating) **and** rejected server-side if POSTed directly (defense in depth — see N10/N8).
+N15. `GET /accounts/profile/` renders the user's display name (first+last or username fallback) and
+     a "Your organizations" list showing each org the user belongs to with their role badge; each
+     entry links to `accounts:switch_org` for that org id.
+N16. New write routes (`leave`, `transfer`) require auth: an unauthenticated POST redirects to login
+     (302 to `LOGIN_URL`); org-scoped ones with no active org redirect to `accounts:onboarding`.
+N17. All new/edited templates `{% extends %}` base (directly or via `_account_base.html`) and add
+     **no** external CSS/JS framework (`<link>`/`<script>` to UI libs) beyond what base.html loads.
+N18. `python manage.py check` exits 0 with the changes applied, and `makemigrations accounts
+     --check` reports **no missing migrations** (this iteration adds no model; if a context
+     processor is registered, it does not break `check`).
+N19. The autonomous-loop contracts are untouched: no edits to `deploys/services.py`,
+     `observability/services.py`, `orchestration/service.py`, `agents/services.py`,
+     `accounts/models.py`, `accounts/scoping.py`, or `accounts/middleware.py`; `org` stays nullable
+     and no accounts code requires a request in a service-layer call.
+N20. Directly POSTing any management action (role change / remove / invite create / revoke / rename
+     / transfer / another user's leave) as an unauthorized role is rejected **server-side**, not
+     merely hidden in the template.
 
----
+## 8. Builder ticket list (this iteration)
 
-## 8. Builder ticket list
+See the structured ticket list returned with this PRD (ACC2-1 … ACC2-7). Build order:
+ACC2-1 (switch_org hardening + context processor + `/accounts/` hub) →
+ACC2-2 (self-contained global switcher partial) →
+ACC2-3 (leave org) → ACC2-4 (transfer ownership) →
+ACC2-5 (activity-feed emission, best-effort) →
+ACC2-6 (members page enrichment) → ACC2-7 (profile enrichment + polish + check/makemigrations).
 
-See the structured ticket list returned with this PRD (ACC-1 … ACC-9). Build order:
-ACC-1 (RBAC helpers + base nav include) → ACC-2 (members) → ACC-3 (roles/remove) →
-ACC-4 (invitations create/list/revoke) → ACC-5 (accept) → ACC-6 (org settings) →
-ACC-7 (profile) → ACC-8 (org switcher) → ACC-9 (polish + makemigrations + check).
+## 9. Regression rubric — DO NOT REGRESS (prior iteration, must stay green)
+
+G1. `GET /accounts/members/` returns 200 and lists exactly `request.org`'s memberships (no
+    cross-org rows).
+G2. Role change / remove are RBAC-gated and enforce the **last-owner guard** (cannot demote/remove
+    the final owner; user-facing error, no 500).
+G3. `POST /accounts/invitations/` (admin) creates an `Invitation` scoped to `request.org` with a
+    unique non-empty token and null `accepted_at`; the accept URL is surfaced in-app.
+G4. `GET /accounts/invite/<token>/` creates the membership idempotently (no duplicate, no
+    `IntegrityError`/500 if already a member) and sets `accepted_at`.
+G5. `GET /accounts/org/` rename is admin-gated and changes only `request.org.name` (slug unchanged).
+G6. `GET /accounts/profile/` updates name/email and changes password (new password authenticates).
+G7. `accounts/models.py`, `scoping.py`, `middleware.py` remain byte-for-byte the contract.

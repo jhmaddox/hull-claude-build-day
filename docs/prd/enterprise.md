@@ -5,6 +5,48 @@ Sprint: Build-out (org-scoped, parallel). Status: MVP scope locked.
 
 ---
 
+## 0. Current state (verified 2026-06-13) — read this first
+
+The **foundational MVP is already built and green** from the prior sprint. As of
+this writing the following are DONE and verified (`python manage.py check` exits
+0; `makemigrations enterprise --check --dry-run` clean; `pytest
+tests/test_enterprise.py` = 20 passed):
+
+- `enterprise/` app scaffolded, in `INSTALLED_APPS`, wired in `helm/urls.py`,
+  nav link present in `templates/base.html`.
+- Models: `AuditLog`, `ApiKey` (both `OrgScopedModel`, org nullable, raw token
+  never stored — only `sha256` + `prefix`).
+- `services.record_audit` / `audit` (loop-safe, never raises), `create_api_key`
+  / `verify_api_key` / `revoke_api_key`.
+- `rbac.py`: `ROLE_RANK`, `has_role` (fail-open), `role_required` decorator,
+  `can` template tag.
+- `auth.py`: Bearer / `X-Api-Key` auth + session-less `GET
+  /enterprise/api/whoami/`.
+- UI: `/enterprise/settings/`, `/enterprise/keys/` (create/revoke),
+  `/enterprise/audit/` (filterable by action/actor), `403.html`.
+
+**Therefore rubric §5 items 1–22 are the regression / acceptance baseline and
+must STAY green.** This sprint's NEW tickets target the gaps below; the §7 rubric
+is the delta to verify on top of the baseline.
+
+### The gap that matters most (this sprint's thesis)
+
+The audit write-path exists, but **no other workstream calls it** — a repo-wide
+grep for `record_audit` / `from enterprise` outside `enterprise/` returns
+nothing. So in the live demo the audit log only ever shows enterprise's own
+key/settings actions; the events an enterprise buyer (and incident forensics)
+actually care about — **PR merged, deploy shipped, incident opened/resolved,
+member added, role changed, invite sent** — are absent. Closing that gap (a thin,
+additive, fail-soft audit hook in each producing workstream) is the
+highest-impact remaining work and the spine of the "who did what, when" story.
+
+Secondary gaps: (a) **member role management** — roles exist but there is no
+in-product way for an owner/admin to change a member's role or remove a member,
+so RBAC can't be exercised live; (b) **audit log usability** — no pagination and
+no CSV export, which enterprise buyers expect for forensics.
+
+---
+
 ## 1. Problem
 
 Hull is a multi-tenant control plane that runs a customer's entire production
@@ -294,20 +336,130 @@ relative to repo root. "import-safe" = can be imported in a Django shell after
 
 ---
 
-## 6. Builder ticket list
+## 6. Builder ticket list (baseline — ALREADY DONE, keep green)
 
-See structured `tickets` output. Summary:
+Items 1–7 below shipped in the prior sprint and serve as the regression
+baseline. Do not rebuild; do not regress.
 
 - ENT-1: Scaffold the `enterprise` app (apps.py, urls, templates dir, AppConfig,
-  doc the `INSTALLED_APPS` + root-url line for the integrator).
-- ENT-2: `AuditLog` + `ApiKey` models (OrgScopedModel) + admin + migration.
+  doc the `INSTALLED_APPS` + root-url line for the integrator).  **DONE**
+- ENT-2: `AuditLog` + `ApiKey` models (OrgScopedModel) + admin + migration. **DONE**
 - ENT-3: `services.py` — `record_audit`/`audit`, `create_api_key`,
-  `verify_api_key`, `revoke_api_key` (loop-safe, no raises).
+  `verify_api_key`, `revoke_api_key` (loop-safe, no raises). **DONE**
 - ENT-4: `rbac.py` — `ROLE_RANK`, `has_role`, `role_required` (fail-open) +
-  app-local template tag `can`.
+  app-local template tag `can`. **DONE**
 - ENT-5: `auth.py` — `resolve_api_key`, `api_key_required`, `whoami` JSON
-  endpoint.
+  endpoint. **DONE**
 - ENT-6: Views + templates — settings, keys (create/revoke), audit log
-  (filterable), all RBAC-gated, cross-linked; emit audit + `core.Event` entries.
-- ENT-7: Tests under `tests/` covering rubric items 6–18, plus the loop
-  regression import test (item 21).
+  (filterable), all RBAC-gated, cross-linked; emit audit + `core.Event` entries. **DONE**
+- ENT-7: Tests (`tests/test_enterprise.py`) covering rubric 6–18 + loop
+  regression import test. **DONE (20 passing)**
+
+---
+
+## 7. THIS SPRINT — the delta (new tickets + rubric)
+
+Goal: turn the audit log from "plumbing" into the product's accountability spine,
+and make RBAC exercisable in-product. All changes remain **additive and
+fail-soft**; the autonomous loop is never blocked.
+
+### 7a. New tickets
+
+- **ENT-8 — Audit constants + helper (`enterprise/audit_actions.py`).** Ship a
+  small module of canonical action-name string constants (e.g.
+  `PR_MERGED = "pr.merged"`, `DEPLOY_SHIPPED = "deploy.shipped"`,
+  `INCIDENT_OPENED = "incident.opened"`, `INCIDENT_RESOLVED = "incident.resolved"`,
+  `MEMBER_ADDED = "member.added"`, `MEMBER_ROLE_CHANGED = "member.role_changed"`,
+  `MEMBER_REMOVED = "member.removed"`, `INVITE_SENT = "invite.sent"`) so producers
+  import a constant instead of a magic string. Pure additive, import-safe.
+
+- **ENT-9 — Cross-workstream audit hooks (the thesis ticket).** From the
+  producing code paths, call `enterprise.services.record_audit(...)` once each,
+  ALWAYS wrapped so a failure can never propagate (the helper already never
+  raises; still import lazily / guard so an import error can't break the loop).
+  Minimum set to wire: PR merge (`vcs`), deploy shipped (`deploys`), incident
+  opened + resolved (`observability`), member added / role changed / removed and
+  invite sent (`accounts`-driven flows). Each call passes `org=` (derive from the
+  object, e.g. `pr.project.org`) and `target=` the object; loop-time calls pass
+  `actor="system"`. **HARD RULE: these hooks must be additive — no signature
+  changes to `deploys.services` / `observability.services` /
+  `orchestration.service` / `agents.services`; wrap each in try/except.**
+  NOTE: producing apps are owned by other PMs — enterprise SHIPS the helper +
+  constants + a documented one-line snippet and files this as a cross-cutting
+  ticket; where enterprise can land the hook without editing a service contract
+  (e.g. via a post-merge view path), it does so directly.
+
+- **ENT-10 — Member role management UI (`/enterprise/members/`).** Admin/owner
+  view listing the org's `Membership` rows (user, role, joined). Owner/admin may
+  change a member's role (dropdown → POST) and remove a member; an owner cannot
+  be demoted/removed by a non-owner, and the last owner cannot be removed/demoted
+  (guard). Each change calls `record_audit("member.role_changed", …)` /
+  `member.removed`. Reads/writes `accounts.models.Membership` only — **MUST NOT
+  edit `accounts/models.py`**. Cross-link from settings.
+
+- **ENT-11 — Audit log usability: pagination + CSV export.** Paginate the audit
+  view (page size ~50, `?page=`) and add an admin-only `GET
+  /enterprise/audit/export.csv` that streams the current org's audit rows
+  (respecting the `?action=`/`?actor=` filters) as CSV with a
+  `Content-Disposition: attachment` header. Org-scoped via
+  `AuditLog.objects.for_org(request.org)`.
+
+- **ENT-12 — Tests for the delta (`tests/test_enterprise_sprint.py`).** Cover
+  rubric §7b items 1–8 below, plus a re-assertion that the loop-safety / contract
+  baseline (existing 20 tests) still passes.
+
+### 7b. Machine-checkable rubric — THIS SPRINT'S DELTA
+
+Baseline = §5 items 1–22 stay green (regression gate). New assertions:
+
+1. **Audit action constants exist & import-safe.**
+   `import enterprise.audit_actions` succeeds after `django.setup()` and exposes
+   string constants incl. `pr.merged`, `deploy.shipped`, `incident.opened`,
+   `incident.resolved`, `member.role_changed`. CHECK: module imports; values are
+   dotted strings.
+
+2. **At least one non-enterprise workstream emits audit rows.** After exercising
+   a real flow (e.g. merge a PR, or ship a deploy, or open an incident), an
+   `AuditLog` row exists whose `action` is one of the cross-workstream constants
+   and whose `org` matches the producing object's org (or `None` for a loop-time
+   call). CHECK: row with a non-`apikey.*`/non-`org.*` action exists. A
+   repo-wide grep `grep -rn "record_audit" vcs deploys observability accounts`
+   returns at least one hit outside `enterprise/`.
+
+3. **Audit hooks are fail-soft (loop never breaks).** Forcing
+   `record_audit` to fail (e.g. monkeypatch `AuditLog.objects.create` to raise)
+   does NOT raise out of the producing path; the underlying action (merge /
+   deploy / incident) still completes. CHECK: producing flow returns normally
+   with audit broken.
+
+4. **Members view is RBAC-gated & lists the org's memberships.** `GET
+   /enterprise/members/` returns 200 for owner/admin, 403 for a viewer, and shows
+   exactly the current org's `Membership` rows (no other org's). CHECK: status
+   codes + row isolation.
+
+5. **Role change works, is audited, and is guarded.** An owner changing a
+   member's role POSTs successfully, the `Membership.role` is updated, and an
+   `AuditLog` row with `action == "member.role_changed"` (org-scoped) is written.
+   Attempting to demote/remove the **last owner** is rejected (no change,
+   appropriate message/403). A viewer attempting a role change gets 403. CHECK:
+   role updated + audit row + last-owner guard + viewer 403.
+
+6. **Audit pagination.** With >50 audit rows in an org, `GET
+   /enterprise/audit/?page=2` returns 200 and a different page of rows than
+   page 1 (page object present in context / template). CHECK: 200 + distinct
+   rows across pages.
+
+7. **Audit CSV export is org-scoped & admin-only.** `GET
+   /enterprise/audit/export.csv` returns 200 with
+   `Content-Type: text/csv` (or `application/csv`) and a `Content-Disposition:
+   attachment` header for an admin; rows in the CSV belong only to the requester's
+   org and honor active `?action=`/`?actor=` filters; a viewer/anon is rejected
+   (403/redirect). CHECK: headers + org isolation + filter respected + RBAC.
+
+8. **No contract regressions (delta gate).** `git diff` shows NO changes to
+   `accounts/models.py`, `helm/settings.py`, `helm/urls.py`,
+   `static/css/helm.css`, or to the public signatures in `deploys/services.py`,
+   `observability/services.py`, `orchestration/service.py`,
+   `agents/services.py`; importing those four service modules still succeeds; and
+   `pytest tests/test_enterprise.py` (the 20 baseline tests) still passes.
+   CHECK: diff absence + imports + baseline green.

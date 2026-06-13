@@ -202,4 +202,23 @@ def merge_pull_request(pr) -> bool:
         icon="merge",
         url=pr.get_absolute_url(),
     )
+
+    # Cross-workstream audit hook (ENT-9). Fail-soft: lazily import enterprise
+    # and swallow EVERYTHING so an audit problem can never block a merge or the
+    # autonomous incident->fix loop. record_audit itself never raises, but the
+    # import is also guarded in case enterprise isn't installed.
+    try:
+        from enterprise.audit_actions import PR_MERGED
+        from enterprise.services import record_audit
+
+        record_audit(
+            PR_MERGED,
+            org=getattr(pr.project, "org", None),
+            actor="system",
+            target=pr,
+            metadata={"number": pr.number, "base": pr.base_branch},
+        )
+    except Exception:  # pragma: no cover - defensive; audit must never break merge
+        pass
+
     return True

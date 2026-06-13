@@ -1,9 +1,20 @@
 # PRD — Incidents v2 (PagerDuty-level) · `oncall/` app
 
 Owner: Incidents v2 PM workstream
-Sprint: 1 (Build-out)
-New app: `oncall/` (org-scoped, multitenant)
-Status: ready for builder
+Sprint: 2 (Operations refresh) · originally shipped Sprint 1
+New app: `oncall/` (org-scoped, multitenant) — **built & green**
+Status: MVP shipped; this revision adds a current-state audit + a tight,
+high-impact increment for THIS sprint. See §3.5 (current-state-vs-target),
+§3.6 (Sprint-2 increment), and the rubric in §5.
+
+> **State of the section (audited 2026-06-13):** the `oncall/` app exists, is in
+> `INSTALLED_APPS`, `manage.py check` is clean, migrations are in sync
+> (`makemigrations --check` = no changes), and `oncall/tests.py` has **29 tests,
+> all passing**. The autonomous loop hooks are wired and fallback-guarded in
+> three places (`observability.services.open_or_update_incident`,
+> `orchestration.service` pipeline steps + postmortem). Rubric items 1–15 and
+> 17–22 below are already MET. The builder's job this sprint is the small,
+> demo-visible increment in §3.6 (rubric items 23–28).
 
 ---
 
@@ -152,6 +163,72 @@ must still resolve an incident exactly as it does today.
 
 ---
 
+## 3.5 Current state vs. target (audit 2026-06-13)
+
+| Capability | Target | Current state | Gap |
+|---|---|---|---|
+| `oncall/` app, installed, check-clean | Yes | **DONE** — installed, `check` exit 0, migrations in sync | — |
+| Org-scoped models (8 models) | All subclass `OrgScopedModel` | **DONE** — `Schedule`, `ScheduleMember`, `EscalationPolicy`, `EscalationStep`, `RoutingRule`, `TimelineEntry`, `Postmortem`, `ActionItem` | — |
+| `Incident` nullable `org` FK | Yes | **DONE** — `observability.Incident.org` is a nullable FK to `accounts.Org`, best-effort populated by `loop.on_incident_opened` | — |
+| Schedules + weekly rotation | Yes | **DONE** — `Schedule.current_oncall()` by ISO-week index; UI to create + order members | — |
+| Escalation policies + ordering | Yes | **DONE** — `escalation.next_step()` monotonic; policy/step UI | — |
+| Alert routing | Yes | **DONE** — `routing.route()` org-scoped, severity-rank + project match; rules UI | — |
+| First-class timeline | Yes | **DONE** — `TimelineEntry` + exception-safe `timeline.record()`; detail page self-polls every 3s | — |
+| Human ack / resolve / assign / note | Yes | **DONE** — HTMX POST views, org-scoped, Event-feed narration | — |
+| Tick escalation (idempotent) | Yes | **DONE** — `/tick/` endpoint + idempotent `escalation.tick()` | board does not auto-tick (see §3.6) |
+| Postmortems + action items + auto-stub | Yes | **DONE** — create/edit UI; sev1/sev2 resolve auto-stubs | — |
+| Loop hooks (opened / pipeline / resolved) | additive + fallback | **DONE** — wired in 3 places, all `try/except`, lazy imports | — |
+| Tenant isolation in views | Yes | **DONE** — every view uses `request.org` scoping; cross-org → 404/empty | — |
+| Tests | green | **DONE** — 29 tests pass | — |
+| **Change severity** (e.g. bump to sev1) | PagerDuty core | **MISSING** — no view/UI; `severity_changed` kind absent | §3.6 #1 |
+| **Reopen** a resolved incident | PagerDuty core | **MISSING** — no view/UI; `reopened` kind absent | §3.6 #2 |
+| **obs ↔ oncall cross-link** | one incident, two surfaces should connect | **MISSING** — `observability` incident detail does not link to the oncall timeline/on-call view | §3.6 #3 |
+| **Live escalation on the board** | unacked incidents escalate over time without a human clicking | **PARTIAL** — only manual `/tick/`; board has no auto-tick poll | §3.6 #4 |
+
+## 3.6 Sprint-2 increment (THE work this sprint — generate-and-filter result)
+
+Brainstormed the full PagerDuty surface (severities, schedules, overrides/layers,
+escalation, routing, dedup, suppression, maintenance windows, paging integrations,
+postmortems, SLA/MTTA/MTTR analytics, status pages, on-call calendar, responder
+chat, alert grouping, runbooks). After filtering to *highest-impact, demo-visible,
+achievable-this-sprint, additive-and-loop-safe*, the increment is exactly four
+items. Everything else stays in Scope OUT.
+
+1. **Change-severity action.** Add a `SEVERITY_CHANGED = "severity_changed"`
+   `TimelineEntry.Kind`, a `POST /oncall/incidents/<pk>/severity/` view
+   (`org_required`, `_require_post`) that sets
+   `observability.Incident.severity` to the posted value (validated against
+   `Incident.Severity`), records a `severity_changed` timeline entry attributed to
+   the user, and emits a `core.models.Event` (icon `alert`). Add a small severity
+   selector to `incident_detail.html`. Loop-safe: request-path only.
+2. **Reopen action.** Add a `REOPENED = "reopened"` `TimelineEntry.Kind`, a
+   `POST /oncall/incidents/<pk>/reopen/` view that, when the incident is
+   `resolved`, sets `status=firing`, clears `resolved_at`, records a `reopened`
+   timeline entry, and emits an `Event`. Surface a "Reopen" button on resolved
+   incidents in `incident_detail.html`.
+3. **obs ↔ oncall cross-link.** On the `observability` incident detail page
+   (`observability/templates/observability/incident_detail.html` — this app may
+   edit its own template), add a prominent link/button to
+   `/oncall/incidents/<pk>/` ("Open in Incident Center / on-call timeline"). This
+   connects the auto-detected v1 incident to the v2 human-response surface for the
+   demo. **No model/route changes**; purely a template link (and, if needed, a
+   read-only context flag). Must not break if `oncall` is absent (link is static).
+4. **Live escalation on the board.** Make `/oncall/` (board) self-advance
+   escalation without a human: add an HTMX self-poll fragment that, on each tick,
+   calls `escalation.tick()` for each open unacked incident and re-renders the
+   open list. Implement as a new `GET /oncall/board/tick/` fragment view
+   (`org_required`) that runs `escalation.tick(i)` for each open incident in the
+   org and returns the open-incidents list partial; wire `hx-get` +
+   `hx-trigger="every 10s"` into `board.html`. Idempotent (tick already dedupes by
+   step), org-scoped, and fully fallback-wrapped so a tick failure never 500s the
+   board.
+
+All four are **additive, request-path-only, and do not touch the autonomous
+loop's control flow** — they only read/append. The loop hard-gate (rubric items
+6–7) must stay green.
+
+---
+
 ## 4. Integration & safety notes (for the builder)
 
 - **Never edit** `accounts/models.py`, `helm/urls.py`, `helm/settings.py`,
@@ -267,6 +344,44 @@ root with `source .venv/bin/activate`.
     rotation (item 9), escalation ordering (10), routing (11), timeline record
     (12), ack+resolve (13–14), tick idempotency (16), tenant isolation (18),
     and the loop-survives-oncall-failure fallback (7).
+
+### Sprint-2 increment rubric (new this revision)
+
+23. **Severity-change action.** `TimelineEntry.Kind` includes a
+    `severity_changed` member. POST to `/oncall/incidents/<pk>/severity/` with a
+    valid severity (`sev1`/`sev2`/`sev3`) by a member of the incident's org sets
+    `observability.Incident.severity` to that value and records a
+    `severity_changed` `TimelineEntry` attributed to the user. An invalid
+    severity value is rejected (severity unchanged, no crash). The
+    `incident_detail.html` page exposes a severity selector control.
+24. **Reopen action.** `TimelineEntry.Kind` includes a `reopened` member. POST to
+    `/oncall/incidents/<pk>/reopen/` on a `resolved` incident sets `status` back
+    to `firing`, clears `resolved_at` (null), and records a `reopened`
+    `TimelineEntry`. The control is shown only for resolved incidents.
+25. **Severity/reopen emit Events.** A severity change and a reopen each emit a
+    `core.models.Event` row (verify a new Event with a matching verb/icon).
+26. **obs → oncall cross-link.** `observability/templates/observability/incident_detail.html`
+    contains a link whose href resolves to `/oncall/incidents/<pk>/` (e.g.
+    `reverse("oncall:incident_detail", args=[incident.pk])` or the literal path),
+    rendering on the observability incident detail page. (Only this app's own
+    `observability` template? — NO: this link lives in the observability template,
+    which the integrator/observability owner permits as an additive link; if cross-
+    app edits are disallowed for the builder, place an equivalent link on
+    `oncall/incident_detail.html` back to `/obs/incidents/<pk>/` AND have the
+    integrator add the forward link. The check passes if a bidirectional link
+    exists between the two incident surfaces.)
+27. **Board auto-tick fragment.** A `GET /oncall/board/tick/` view exists
+    (`org_required`), returns the open-incidents list partial, and on each call
+    invokes `oncall.services.escalation.tick(...)` for each open unacked incident
+    in `request.org`. `board.html` wires an HTMX self-poll (`hx-get` to that URL
+    with an `hx-trigger` interval). A failure inside the tick loop is swallowed
+    (the fragment still returns the list, never a 500).
+28. **Increment is loop-safe (CROWN JEWEL still green).** After items 23–27,
+    rubric items 6–7 still hold: the autonomous
+    `incident → fix → PR → CI → merge → redeploy → resolved` loop still drives an
+    incident to `resolved` with a non-null `remediation_pr`, and forcing an
+    `oncall` hook to raise does not break it. `python manage.py test oncall`
+    (now also covering 23/24/27) passes, and `manage.py check` is exit 0.
 
 ---
 

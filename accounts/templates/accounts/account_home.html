@@ -1,0 +1,36 @@
+{% extends "accounts/_account_base.html" %}
+{% block title %}Account{% endblock %}
+{% block crumbs %}<span class="muted">Account</span>{% endblock %}
+{% block account_title %}Account home{% endblock %}
+
+{% block account_body %}
+<div class="card mb-16">
+  <div class="card-head"><div style="font-weight:600;">Current organization</div></div>
+  <div class="row between wrap" style="align-items:center;">
+    <div>
+      <div style="font-weight:600;">{% if request.org %}{{ request.org.name }}{% else %}No active org{% endif %}</div>
+      <div class="muted small">Use the switcher to change organizations.</div>
+    </div>
+    {% include "accounts/_org_switcher.html" %}
+  </div>
+</div>
+
+<div class="grid grid-2">
+  <a class="card" style="text-decoration:none;" href="{% url 'accounts:members' %}">
+    <div class="card-head"><div style="font-weight:600;">Members</div></div>
+    <div class="muted small">View the team, change roles, transfer ownership, and leave the org.</div>
+  </a>
+  <a class="card" style="text-decoration:none;" href="{% url 'accounts:invitations' %}">
+    <div class="card-head"><div style="font-weight:600;">Invitations</div></div>
+    <div class="muted small">Invite teammates and manage pending invites.</div>
+  </a>
+  <a class="card" style="text-decoration:none;" href="{% url 'accounts:org_settings' %}">
+    <div class="card-head"><div style="font-weight:600;">Org settings</div></div>
+    <div class="muted small">Rename the organization and review its slug.</div>
+  </a>
+  <a class="card" style="text-decoration:none;" href="{% url 'accounts:profile' %}">
+    <div class="card-head"><div style="font-weight:600;">Profile</div></div>
+    <div class="muted small">Update your name, email, and password.</div>
+  </a>
+</div>
+{% endblock %}

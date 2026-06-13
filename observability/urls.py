@@ -38,6 +38,7 @@ urlpatterns = [
     path("monitors/", views.monitor_list, name="monitor_list"),
     path("monitors/new/", views.monitor_new, name="monitor_new"),
     path("monitors/<int:pk>/edit/", views.monitor_edit, name="monitor_edit"),
+    path("monitors/<int:pk>/mute/", views.monitor_mute, name="monitor_mute"),
     path(
         "monitors/<int:pk>/delete/",
         views.monitor_delete,

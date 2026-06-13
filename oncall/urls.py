@@ -14,7 +14,11 @@ urlpatterns = [
     path("incidents/<int:pk>/note/", views.note, name="note"),
     path("incidents/<int:pk>/assign/", views.assign, name="assign"),
     path("incidents/<int:pk>/tick/", views.tick, name="tick"),
+    path("incidents/<int:pk>/severity/", views.change_severity, name="change_severity"),
+    path("incidents/<int:pk>/reopen/", views.reopen, name="reopen"),
     path("incidents/<int:pk>/postmortem/", views.postmortem, name="postmortem"),
+    # Live board auto-tick
+    path("board/tick/", views.board_tick, name="board_tick"),
     # Schedules
     path("schedules/", views.schedules, name="schedules"),
     path("schedules/<int:pk>/", views.schedule_detail, name="schedule_detail"),

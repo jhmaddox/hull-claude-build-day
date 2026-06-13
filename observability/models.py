@@ -198,6 +198,10 @@ class Monitor(OrgScopedModel):
         max_length=10, choices=Severity.choices, default=Severity.SEV2
     )
     enabled = models.BooleanField(default=True)
+    # Snooze/mute: while ``muted_until`` is in the future the monitor opens
+    # nothing and recovers nothing (purely time-based; auto-expires, no cron).
+    # Nullable -> loop-safe, no required value on existing rows.
+    muted_until = models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField(default=timezone.now)
 
     class Meta:
@@ -205,6 +209,83 @@ class Monitor(OrgScopedModel):
 
     def __str__(self):
         return self.name or f"{self.metric} {self.comparator} {self.threshold}"
+
+    # ----- breach signature (shared by evaluate_monitors + recovery) --------- #
+    def breach_error_message(self, window_minutes=None) -> str:
+        """The stable ``monitor:<pk> ...`` error_message basis a breach uses.
+
+        Kept identical to what ``evaluate_monitors`` writes so the derived
+        signature dedupes/locates this monitor's MonitorBreach incident. The live
+        measured value is intentionally NOT part of this string (it lives in the
+        incident traceback), so the signature is stable across fluctuating values.
+        """
+        window = max(1, int(window_minutes or self.window_minutes or 5))
+        label = self.get_metric_display()
+        return (
+            f"monitor:{self.pk} {label} {self.comparator_symbol} "
+            f"{self.threshold} over {window}m"
+        )
+
+    def breach_signature(self, window_minutes=None) -> str:
+        """The Incident.signature a MonitorBreach for this monitor would carry."""
+        from .services import _compute_signature
+
+        return _compute_signature(
+            "MonitorBreach",
+            self.breach_error_message(window_minutes),
+            "",
+            None,
+        )
+
+    @property
+    def is_muted(self) -> bool:
+        return bool(self.muted_until and self.muted_until > timezone.now())
+
+    def live_status(self) -> str:
+        """Derived status: one of ``{"muted","disabled","alerting","ok"}``.
+
+        Order matters: a muted monitor reads as muted even if disabled/alerting;
+        a disabled monitor reads disabled; otherwise it is ``alerting`` iff an
+        unresolved MonitorBreach incident matches this monitor's signature, else
+        ``ok``. Derived (no stored column) to avoid stale state + migration churn.
+        """
+        if self.is_muted:
+            return "muted"
+        if not self.enabled:
+            return "disabled"
+        from .models import Incident  # local to avoid any import surprises
+
+        try:
+            sig = self.breach_signature()
+            alerting = (
+                Incident.objects.filter(
+                    error_type="MonitorBreach", signature=sig
+                )
+                .exclude(status=Incident.Status.RESOLVED)
+                .exists()
+            )
+        except Exception:
+            alerting = False
+        return "alerting" if alerting else "ok"
+
+    @property
+    def status_pill_class(self) -> str:
+        """helm.css badge class for the live status pill."""
+        return {
+            "ok": "badge-success",
+            "alerting": "badge-danger",
+            "muted": "badge-neutral",
+            "disabled": "badge-neutral",
+        }.get(self.live_status(), "badge-neutral")
+
+    @property
+    def status_label(self) -> str:
+        return {
+            "ok": "OK",
+            "alerting": "Alerting",
+            "muted": "Muted",
+            "disabled": "Disabled",
+        }.get(self.live_status(), "OK")
 
     @property
     def comparator_symbol(self):

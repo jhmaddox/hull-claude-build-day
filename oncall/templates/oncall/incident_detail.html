@@ -14,6 +14,15 @@
     <div class="muted">{{ incident.title }}</div>
   </div>
   <div class="row gap-8">
+    <a class="btn btn-ghost" href="{{ incident.get_absolute_url }}">View in observability</a>
+    <form method="post" action="/oncall/incidents/{{ incident.pk }}/severity/" class="row gap-8">{% csrf_token %}
+      <select name="severity" class="field">
+        <option value="sev1" {% if incident.severity == 'sev1' %}selected{% endif %}>SEV1</option>
+        <option value="sev2" {% if incident.severity == 'sev2' %}selected{% endif %}>SEV2</option>
+        <option value="sev3" {% if incident.severity == 'sev3' %}selected{% endif %}>SEV3</option>
+      </select>
+      <button class="btn btn-ghost" type="submit">Change severity</button>
+    </form>
     {% if incident.status != 'acknowledged' and incident.status != 'resolved' %}
     <form method="post" action="/oncall/incidents/{{ incident.pk }}/ack/">{% csrf_token %}
       <button class="btn btn-primary" type="submit">Acknowledge</button>
@@ -25,6 +34,9 @@
     </form>
     {% endif %}
     {% if incident.status == 'resolved' %}
+    <form method="post" action="/oncall/incidents/{{ incident.pk }}/reopen/">{% csrf_token %}
+      <button class="btn btn-ghost" type="submit">Reopen</button>
+    </form>
     <a class="btn btn-ghost" href="/oncall/incidents/{{ incident.pk }}/postmortem/">Postmortem</a>
     {% endif %}
   </div>

@@ -22,7 +22,22 @@
         <div class="muted small mono">{{ m.get_metric_display }} {{ m.comparator_symbol }} {{ m.threshold }} over {{ m.window_minutes }}m
           {% if m.deployment %}· {{ m.deployment.environment.project.name }}/{{ m.deployment.environment.name }}{% else %}· (all deployments){% endif %}</div>
       </div>
-      <span class="badge {% if m.enabled %}badge-success{% else %}badge-neutral{% endif %}">{% if m.enabled %}enabled{% else %}disabled{% endif %}</span>
+      <span class="pill badge {{ m.status_pill_class }}" title="live status">{{ m.status_label }}</span>
+      {% if m.is_muted %}
+      <form method="post" action="/obs/monitors/{{ m.pk }}/mute/" style="display:inline;">
+        {% csrf_token %}<input type="hidden" name="minutes" value="0">
+        <button class="btn btn-sm btn-ghost" type="submit">Unmute</button>
+      </form>
+      {% else %}
+      <form method="post" action="/obs/monitors/{{ m.pk }}/mute/" style="display:inline;">
+        {% csrf_token %}<input type="hidden" name="minutes" value="30">
+        <button class="btn btn-sm btn-ghost" type="submit">Mute 30m</button>
+      </form>
+      <form method="post" action="/obs/monitors/{{ m.pk }}/mute/" style="display:inline;">
+        {% csrf_token %}<input type="hidden" name="minutes" value="120">
+        <button class="btn btn-sm btn-ghost" type="submit">Mute 2h</button>
+      </form>
+      {% endif %}
       <a class="btn btn-sm btn-ghost" href="/obs/monitors/{{ m.pk }}/edit/">Edit</a>
       <a class="btn btn-sm btn-ghost" href="/obs/monitors/{{ m.pk }}/delete/">Delete</a>
     </div>

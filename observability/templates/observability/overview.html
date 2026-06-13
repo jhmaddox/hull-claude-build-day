@@ -15,6 +15,30 @@
   </div>
 </div>
 
+{# Org fleet summary — aggregate golden signals across live deployments. #}
+<div class="grid grid-4 mb-16">
+  <div class="card stat">
+    <div class="label muted small">TOTAL REQ RATE</div>
+    <div class="value" style="font-size:24px;font-weight:700;">{{ summary.total_req_rate }}<span class="muted small"> /min</span></div>
+    <div class="muted small">{{ summary.total_throughput }} req · {{ summary.live_deployments }} live</div>
+  </div>
+  <div class="card stat">
+    <div class="label muted small">TOTAL ERRORS (5xx)</div>
+    <div class="value {% if summary.total_errors %}danger{% endif %}" style="font-size:24px;font-weight:700;">{{ summary.total_errors }}</div>
+    <div class="muted small">across the fleet</div>
+  </div>
+  <div class="card stat">
+    <div class="label muted small">WORST p95</div>
+    <div class="value" style="font-size:24px;font-weight:700;">{{ summary.worst_p95|default:"—" }}<span class="muted small"> ms</span></div>
+    <div class="muted small">slowest live deployment</div>
+  </div>
+  <div class="card stat">
+    <div class="label muted small">FIRING / OPEN</div>
+    <div class="value {% if summary.firing_monitors or summary.open_incidents %}danger{% endif %}" style="font-size:24px;font-weight:700;">{{ summary.firing_monitors }}<span class="muted small"> mon</span> · {{ summary.open_incidents }}<span class="muted small"> inc</span></div>
+    <div class="muted small">alerting monitors · open incidents</div>
+  </div>
+</div>
+
 {% if open_incidents %}
 <div class="card pad-0 mb-16" style="border-color: rgba(248,113,113,.35);">
   <div class="card-head" style="padding:16px 18px 0;"><h2 style="color:var(--danger)">⚠ Active incidents</h2><a class="link small" href="/obs/incidents/">View all →</a></div>

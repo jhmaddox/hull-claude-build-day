@@ -3,7 +3,10 @@
 {% block crumbs %}<span class="muted">Enterprise</span> / <span>Audit log</span>{% endblock %}
 {% block content %}
   <div class="card mb-16">
-    <div class="card-head"><h2 class="title-xl">Audit log</h2></div>
+    <div class="card-head">
+      <h2 class="title-xl">Audit log</h2>
+      <a class="btn btn-ghost" href="{% url 'enterprise:audit_export' %}{% if f_action %}?action={{ f_action }}{% endif %}{% if f_actor %}{% if f_action %}&{% else %}?{% endif %}actor={{ f_actor }}{% endif %}">Export CSV</a>
+    </div>
     <form method="get" class="row gap-8">
       <select class="field" name="action">
         <option value="">All actions</option>
@@ -39,4 +42,16 @@
       <div class="empty muted">No audit entries match.</div>
     {% endif %}
   </div>
+
+  {% if page_obj and page_obj.paginator.num_pages > 1 %}
+    <div class="row gap-8 mt-16">
+      {% if page_obj.has_previous %}
+        <a class="btn btn-ghost" href="?page={{ page_obj.previous_page_number }}{% if f_action %}&action={{ f_action }}{% endif %}{% if f_actor %}&actor={{ f_actor }}{% endif %}">Previous</a>
+      {% endif %}
+      <span class="muted small">Page {{ page_obj.number }} of {{ page_obj.paginator.num_pages }}</span>
+      {% if page_obj.has_next %}
+        <a class="btn btn-ghost" href="?page={{ page_obj.next_page_number }}{% if f_action %}&action={{ f_action }}{% endif %}{% if f_actor %}&actor={{ f_actor }}{% endif %}">Next</a>
+      {% endif %}
+    </div>
+  {% endif %}
 {% endblock %}

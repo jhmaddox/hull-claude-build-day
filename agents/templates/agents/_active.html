@@ -1,0 +1,34 @@
+{% load helm_extras %}
+{% comment %}
+  Active-agents fragment. Org-scoped (view filters AgentRun.for_org), lists only
+  queued/running runs newest-first, and self-refreshes via HTMX. Drop it into any
+  page with: {% include "agents/_active.html" %} — it re-fetches itself.
+{% endcomment %}
+<div id="agents-active"
+     hx-get="{% url 'agents:active' %}"
+     hx-trigger="every 4s"
+     hx-swap="outerHTML">
+  <div class="row between mb-8">
+    <span class="muted small">Active agents</span>
+    {% if runs %}<span class="pill pill-live"><span class="dot dot-live"></span> {{ runs|length }} working</span>{% endif %}
+  </div>
+  <div class="list">
+    {% for r in runs %}
+    <a class="list-row" href="{% url 'agents:detail' r.pk %}">
+      <span class="badge {{ r.status|status_badge }}">
+        {% if r.status == 'running' %}<span class="spinner"></span>{% endif %}{{ r.get_status_display }}
+      </span>
+      <span class="badge badge-accent">{{ r.get_kind_display }}</span>
+      <div class="grow">
+        <strong>{{ r.title }}</strong>
+        <div class="muted small">{{ r.project.name }}{% if r.worktree %} · <span class="mono">{{ r.worktree.branch }}</span>{% endif %}</div>
+      </div>
+      {% if r.num_turns %}<span class="muted small">{{ r.num_turns }} turns</span>{% endif %}
+      {% if r.cost_usd %}<span class="muted small mono">${{ r.cost_usd|floatformat:4 }}</span>{% endif %}
+      <span class="muted small">{{ r.created_at|timesince }} ago</span>
+    </a>
+    {% empty %}
+    <div class="empty small"><div class="big">✦</div>No active agents right now.</div>
+    {% endfor %}
+  </div>
+</div>

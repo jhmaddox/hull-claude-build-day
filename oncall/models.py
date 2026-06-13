@@ -181,6 +181,8 @@ class TimelineEntry(OrgScopedModel):
         MERGE = "merge", "Merge"
         DEPLOY = "deploy", "Deploy"
         RESOLVED = "resolved", "Resolved"
+        SEVERITY_CHANGED = "severity_changed", "Severity changed"
+        REOPENED = "reopened", "Reopened"
 
     incident = models.ForeignKey(
         "observability.Incident",
