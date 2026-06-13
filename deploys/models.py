@@ -1,0 +1,106 @@
+from django.db import models
+from django.utils import timezone
+
+
+class Environment(models.Model):
+    """A logical deploy target for a project (e.g. staging, prod, a worktree env)."""
+
+    class Kind(models.TextChoices):
+        STAGING = "staging", "Staging"
+        PROD = "prod", "Production"
+        PREVIEW = "preview", "Preview"
+
+    project = models.ForeignKey(
+        "projects.Project", on_delete=models.CASCADE, related_name="environments"
+    )
+    name = models.CharField(max_length=100)
+    kind = models.CharField(max_length=20, choices=Kind.choices, default=Kind.PREVIEW)
+    branch = models.CharField(max_length=200, default="main")
+    # Stable port assigned to this environment's current deployment.
+    port = models.IntegerField(null=True, blank=True)
+    # Source worktree for preview environments (string ref avoids circular import).
+    worktree = models.ForeignKey(
+        "agents.Worktree",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="environments",
+    )
+    auto_deploy = models.BooleanField(default=True)
+    created_at = models.DateTimeField(default=timezone.now)
+
+    class Meta:
+        ordering = ["project", "kind", "name"]
+        unique_together = [("project", "name")]
+
+    def __str__(self):
+        return f"{self.project.slug}/{self.name}"
+
+    @property
+    def current_deployment(self):
+        return self.deployments.exclude(status=Deployment.Status.STOPPED).order_by(
+            "-created_at"
+        ).first()
+
+    @property
+    def public_url(self):
+        from django.conf import settings
+
+        return f"{settings.HELM_BASE_URL.rstrip('/')}/d/{self.pk}/"
+
+
+class Deployment(models.Model):
+    """A single build+run of an environment at a specific commit."""
+
+    class Status(models.TextChoices):
+        QUEUED = "queued", "Queued"
+        BUILDING = "building", "Building"
+        LIVE = "live", "Live"
+        FAILED = "failed", "Failed"
+        STOPPED = "stopped", "Stopped"
+
+    class Health(models.TextChoices):
+        UNKNOWN = "unknown", "Unknown"
+        HEALTHY = "healthy", "Healthy"
+        UNHEALTHY = "unhealthy", "Unhealthy"
+
+    environment = models.ForeignKey(
+        Environment, on_delete=models.CASCADE, related_name="deployments"
+    )
+    commit_sha = models.CharField(max_length=64, blank=True)
+    commit_message = models.CharField(max_length=500, blank=True)
+    status = models.CharField(
+        max_length=20, choices=Status.choices, default=Status.QUEUED
+    )
+    health = models.CharField(
+        max_length=20, choices=Health.choices, default=Health.UNKNOWN
+    )
+    port = models.IntegerField(null=True, blank=True)
+    pid = models.IntegerField(null=True, blank=True)
+    # Absolute path to the checked-out source this deployment runs from.
+    source_path = models.CharField(max_length=1000, blank=True)
+    log_path = models.CharField(max_length=1000, blank=True)
+    build_log = models.TextField(blank=True)
+    error = models.TextField(blank=True)
+
+    created_at = models.DateTimeField(default=timezone.now)
+    live_at = models.DateTimeField(null=True, blank=True)
+    stopped_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return f"{self.environment} @ {self.commit_sha[:8]} ({self.status})"
+
+    @property
+    def project(self):
+        return self.environment.project
+
+    @property
+    def public_url(self):
+        return self.environment.public_url
+
+    @property
+    def is_running(self):
+        return self.status == self.Status.LIVE and self.pid is not None

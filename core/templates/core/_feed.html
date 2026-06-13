@@ -1,0 +1,15 @@
+{% load helm_extras %}
+<div class="feed">
+  {% for e in events %}
+  <div class="feed-item">
+    <div class="feed-ico {{ e.level }}">{{ e.icon|feed_icon }}</div>
+    <div class="feed-body grow">
+      <div><strong>{{ e.actor }}</strong> {{ e.verb }}
+        {% if e.url %}<a class="link small" href="{{ e.url }}">↗</a>{% endif %}</div>
+      <div class="feed-time">{% if e.project %}{{ e.project.name }} · {% endif %}{{ e.ts|timesince }} ago</div>
+    </div>
+  </div>
+  {% empty %}
+  <div class="empty small">Nothing yet — the crew is standing by.</div>
+  {% endfor %}
+</div>

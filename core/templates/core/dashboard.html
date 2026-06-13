@@ -1,0 +1,79 @@
+{% extends "base.html" %}
+{% block title %}Mission Control{% endblock %}
+{% block crumbs %}<span class="muted">Mission Control</span>{% endblock %}
+{% block actions %}
+  <a class="btn btn-primary" href="/projects/new/">+ Import project</a>
+{% endblock %}
+
+{% block content %}
+<div class="row between mb-16">
+  <div>
+    <div class="title-xl">Mission Control</div>
+    <div class="muted">Your entire stack — version control, deploys, ops, and a crew of Claude agents — in one plane.</div>
+  </div>
+</div>
+
+<div class="grid grid-4 mb-16">
+  <div class="card stat"><div class="label">Projects</div><div class="value">{{ stats.projects }}</div></div>
+  <div class="card stat"><div class="label">Live deploys</div><div class="value success">{{ stats.live }}</div></div>
+  <div class="card stat"><div class="label">Agents working</div><div class="value accent">{{ stats.agents }}</div></div>
+  <div class="card stat"><div class="label">Open incidents</div><div class="value {% if stats.incidents %}danger{% endif %}">{{ stats.incidents }}</div></div>
+</div>
+
+<div class="grid" style="grid-template-columns: 1.4fr 1fr;">
+  <div class="col">
+    <div class="card pad-0">
+      <div class="card-head" style="padding:16px 18px 0;"><h2>Projects</h2><a class="link small" href="/projects/">View all →</a></div>
+      <div class="list">
+        {% for p in projects %}
+        <a class="list-row" href="/projects/{{ p.slug }}/">
+          <span class="badge badge-neutral">{{ p.framework }}</span>
+          <div class="grow"><strong>{{ p.name }}</strong><div class="muted small">{{ p.repo_url|default:p.local_path }}</div></div>
+          <span class="badge {% if p.status == 'ready' %}badge-success{% elif p.status == 'failed' %}badge-danger{% else %}badge-warn{% endif %}">{{ p.get_status_display }}</span>
+        </a>
+        {% empty %}
+        <div class="empty"><div class="big">⎈</div>No projects yet. <a class="link" href="/projects/new/">Import one</a> to begin.</div>
+        {% endfor %}
+      </div>
+    </div>
+
+    <div class="card pad-0">
+      <div class="card-head" style="padding:16px 18px 0;"><h2>Live deployments</h2><a class="link small" href="/deploys/">View all →</a></div>
+      <div class="list">
+        {% for d in live_deployments %}
+        <div class="list-row">
+          <span class="dot dot-live"></span>
+          <div class="grow"><strong>{{ d.environment.project.name }}</strong> <span class="muted">/ {{ d.environment.name }}</span>
+            <div class="muted small mono">{{ d.commit_sha|slice:":8" }} · :{{ d.port }}</div></div>
+          <a class="btn btn-sm" href="{{ d.public_url }}" target="_blank">Open ↗</a>
+        </div>
+        {% empty %}<div class="empty">No live deployments.</div>{% endfor %}
+      </div>
+    </div>
+  </div>
+
+  <div class="col">
+    {% if open_incidents %}
+    <div class="card pad-0" style="border-color: rgba(248,113,113,.35);">
+      <div class="card-head" style="padding:16px 18px 0;"><h2 style="color:var(--danger)">⚠ Active incidents</h2></div>
+      <div class="list">
+        {% for inc in open_incidents %}
+        <a class="list-row" href="/obs/incidents/{{ inc.pk }}/">
+          <span class="badge badge-danger">{{ inc.get_severity_display }}</span>
+          <div class="grow"><strong>INC-{{ inc.number }}</strong> {{ inc.title }}
+            <div class="muted small">{{ inc.project.name }} · {{ inc.get_status_display }}</div></div>
+        </a>
+        {% endfor %}
+      </div>
+    </div>
+    {% endif %}
+
+    <div class="card pad-0">
+      <div class="card-head" style="padding:16px 18px 0;"><h2>Activity</h2><span class="pill pill-live"><span class="dot dot-live"></span> live</span></div>
+      <div id="feed" hx-get="/feed/" hx-trigger="every 3s" hx-swap="innerHTML" style="padding:6px 18px 14px;">
+        {% include "core/_feed.html" %}
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
