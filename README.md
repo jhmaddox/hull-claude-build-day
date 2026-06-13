@@ -18,7 +18,11 @@ A production app throws an error → Hull detects it from the live logs → open
 PagerDuty-style **incident** → spawns a **Claude agent in an isolated git
 worktree** → the agent reproduces it, fixes the root cause, **adds a regression
 test** → opens a **pull request** in Hull's own PR/diff UI → **CI runs** → green
-→ **merges and redeploys** → incident **resolved**. No human in the loop.
+→ a human **reviews & merges** → Hull redeploys → incident **resolved**.
+
+Everything up to the merge is autonomous; the merge is a human-in-the-loop gate
+by default (you review the agent's fix before it ships). Flip
+`HELM_AUTO_MERGE=1` and the loop closes itself — no human in the loop at all.
 
 ## What it does
 
