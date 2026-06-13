@@ -14,7 +14,7 @@ from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.utils.text import slugify
 
-from accounts.scoping import org_required, scoped
+from accounts.scoping import org_required, visible
 
 from . import services
 from .markdown import extract_wikilinks
@@ -25,11 +25,11 @@ from .models import Page, PageLink, PageRef, PageRevision, Space
 # scoping helpers
 # --------------------------------------------------------------------------- #
 def _spaces(request):
-    return scoped(Space, request)
+    return visible(Space, request)
 
 
 def _pages(request):
-    return scoped(Page, request)
+    return visible(Page, request)
 
 
 def _get_page(request, pk):
@@ -125,7 +125,7 @@ def page_detail(request, pk):
     children = list(_pages(request).filter(parent=page))
     backlinks = [
         link
-        for link in scoped(PageLink, request)
+        for link in visible(PageLink, request)
         .filter(target=page)
         .select_related("source")
     ]
@@ -151,7 +151,7 @@ def _page_refs(request, page):
     """Org-scoped PageRefs for ``page``. The target object is resolved lazily and
     defensively in the model so a deleted/foreign target can't 500 (R22)."""
     return list(
-        scoped(PageRef, request)
+        visible(PageRef, request)
         .filter(page=page)
         .select_related("project", "pull_request", "incident")
     )
@@ -207,7 +207,7 @@ def remove_ref(request, pk, ref_pk):
     """HTMX: detach a related-work ref (org-scoped), return the refs card."""
     page = _get_page(request, pk)
     if request.method == "POST":
-        ref = scoped(PageRef, request).filter(page=page, pk=ref_pk).first()
+        ref = visible(PageRef, request).filter(page=page, pk=ref_pk).first()
         if ref is not None:
             ref.delete()
             messages.success(request, "Removed reference.")
@@ -348,7 +348,7 @@ def page_body(request, pk):
 def page_history(request, pk):
     page = _get_page(request, pk)
     revisions = list(
-        scoped(PageRevision, request)
+        visible(PageRevision, request)
         .filter(page=page)
         .select_related("edited_by")
     )
@@ -363,7 +363,7 @@ def page_history(request, pk):
 def revision_detail(request, pk, number):
     page = _get_page(request, pk)
     revision = get_object_or_404(
-        scoped(PageRevision, request).filter(page=page), number=number
+        visible(PageRevision, request).filter(page=page), number=number
     )
     return render(
         request,
@@ -380,7 +380,7 @@ def revision_detail(request, pk, number):
 def revision_restore(request, pk, number):
     page = _get_page(request, pk)
     revision = get_object_or_404(
-        scoped(PageRevision, request).filter(page=page), number=number
+        visible(PageRevision, request).filter(page=page), number=number
     )
     if request.method == "POST":
         page.snapshot_revision(request.user)  # snapshot current before restoring

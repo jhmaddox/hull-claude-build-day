@@ -1,7 +1,7 @@
 """Issues views — kanban board, backlog, ticket detail, sprints.
 
 All tenant views go through ``accounts.scoping`` (``org_required`` +
-``scoped`` / ``Model.objects.for_org(request.org)``) so there is never a
+``scoped`` / ``visible(Model, request)``) so there is never a
 cross-org leak. HTMX powers in-place status changes + comment reloads.
 """
 
@@ -13,7 +13,7 @@ from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.utils import timezone
 
-from accounts.scoping import org_required, scoped
+from accounts.scoping import org_required, visible
 
 from . import services
 from .models import Board, Label, Sprint, Ticket
@@ -45,11 +45,11 @@ def _columns(tickets):
 @org_required
 def board(request):
     tickets = (
-        scoped(Ticket, request)
+        visible(Ticket, request)
         .select_related("board", "sprint", "assignee", "incident", "pull_request")
         .prefetch_related("labels")
     )
-    boards = scoped(Board, request)
+    boards = visible(Board, request)
     ctx = {
         "columns": _columns(tickets),
         "boards": boards,
@@ -61,7 +61,7 @@ def board(request):
 @org_required
 def backlog(request):
     tickets = (
-        scoped(Ticket, request)
+        visible(Ticket, request)
         .select_related("board", "sprint", "assignee")
         .prefetch_related("labels")
     )
@@ -98,7 +98,7 @@ def backlog(request):
 
     # Assignee options: users that report/assigned within this org's tickets.
     assignee_ids = (
-        scoped(Ticket, request)
+        visible(Ticket, request)
         .exclude(assignee__isnull=True)
         .values_list("assignee_id", flat=True)
         .distinct()
@@ -109,7 +109,7 @@ def backlog(request):
     from django.db.models import Count
 
     raw_counts = dict(
-        scoped(Ticket, request)
+        visible(Ticket, request)
         .values_list("status")
         .annotate(n=Count("id"))
     )
@@ -127,7 +127,7 @@ def backlog(request):
 
     ctx = {
         "tickets": tickets,
-        "labels": scoped(Label, request),
+        "labels": visible(Label, request),
         "assignees": assignees,
         "status_chips": status_chips,
         "total_count": total_count,
@@ -151,15 +151,15 @@ def backlog(request):
 # --------------------------------------------------------------------------- #
 @org_required
 def ticket(request, pk):
-    t = get_object_or_404(scoped(Ticket, request), pk=pk)
+    t = get_object_or_404(visible(Ticket, request), pk=pk)
     attached_label_ids = set(t.labels.values_list("id", flat=True))
     ctx = {
         "ticket": t,
         "comments": t.comments.select_related("author").all(),
         "activities": t.activities.all(),
         "status_choices": Ticket.Status.choices,
-        "sprints": scoped(Sprint, request),
-        "all_labels": scoped(Label, request),
+        "sprints": visible(Sprint, request),
+        "all_labels": visible(Label, request),
         "attached_label_ids": attached_label_ids,
         "links": _ticket_links(t),
         "mentions": _ticket_mentions(t, request),
@@ -187,7 +187,7 @@ def _ticket_mentions(t, request):
         from vcs.models import PullRequest
 
         prs = (
-            scoped(PullRequest, request)
+            visible(PullRequest, request)
             .filter(
                 Q(title__icontains=key)
                 | Q(description__icontains=key)
@@ -214,7 +214,7 @@ def _ticket_mentions(t, request):
         from agents.models import AgentRun
 
         runs = (
-            scoped(AgentRun, request)
+            visible(AgentRun, request)
             .filter(
                 Q(title__icontains=key)
                 | Q(prompt__icontains=key)
@@ -271,7 +271,7 @@ def _ticket_links(t):
 
 @org_required
 def add_comment(request, pk):
-    t = get_object_or_404(scoped(Ticket, request), pk=pk)
+    t = get_object_or_404(visible(Ticket, request), pk=pk)
     if request.method == "POST":
         body = (request.POST.get("body") or "").strip()
         if body:
@@ -284,7 +284,7 @@ def add_comment(request, pk):
 
 @org_required
 def set_status(request, pk):
-    t = get_object_or_404(scoped(Ticket, request), pk=pk)
+    t = get_object_or_404(visible(Ticket, request), pk=pk)
     if request.method == "POST":
         new = request.POST.get("status")
         valid = {s for s, _ in Ticket.Status.choices}
@@ -307,7 +307,7 @@ def card_status(request, pk):
     Reuses ``services.set_status`` (org-scoped + Activity logged) and returns the
     re-rendered board card fragment for an in-place HTMX swap (no full reload).
     """
-    t = get_object_or_404(scoped(Ticket, request), pk=pk)
+    t = get_object_or_404(visible(Ticket, request), pk=pk)
     if request.method == "POST":
         new = request.POST.get("status")
         valid = {s for s, _ in Ticket.Status.choices}
@@ -323,7 +323,7 @@ def card_status(request, pk):
 
 @org_required
 def assign(request, pk):
-    t = get_object_or_404(scoped(Ticket, request), pk=pk)
+    t = get_object_or_404(visible(Ticket, request), pk=pk)
     if request.method == "POST":
         uid = request.POST.get("assignee")
         if uid == "me":
@@ -352,8 +352,8 @@ def assign(request, pk):
 # --------------------------------------------------------------------------- #
 @org_required
 def ticket_new(request):
-    boards = scoped(Board, request)
-    sprints = scoped(Sprint, request)
+    boards = visible(Board, request)
+    sprints = visible(Sprint, request)
     if request.method == "POST":
         title = (request.POST.get("title") or "").strip()
         if not title:
@@ -393,9 +393,9 @@ def ticket_new(request):
 
 @org_required
 def ticket_edit(request, pk):
-    t = get_object_or_404(scoped(Ticket, request), pk=pk)
-    boards = scoped(Board, request)
-    sprints = scoped(Sprint, request)
+    t = get_object_or_404(visible(Ticket, request), pk=pk)
+    boards = visible(Board, request)
+    sprints = visible(Sprint, request)
     if request.method == "POST":
         t.title = (request.POST.get("title") or t.title).strip()
         t.description = request.POST.get("description", t.description)
@@ -425,10 +425,10 @@ def ticket_edit(request, pk):
 # --------------------------------------------------------------------------- #
 @org_required
 def sprints(request):
-    sprint_qs = scoped(Sprint, request).select_related("board")
+    sprint_qs = visible(Sprint, request).select_related("board")
     rows = []
     for s in sprint_qs:
-        ts = scoped(Ticket, request).filter(sprint=s)
+        ts = visible(Ticket, request).filter(sprint=s)
         total = ts.count()
         done = ts.filter(status=Ticket.Status.DONE).count()
         rows.append({"sprint": s, "total": total, "done": done})
@@ -437,9 +437,9 @@ def sprints(request):
 
 @org_required
 def sprint_detail(request, pk):
-    s = get_object_or_404(scoped(Sprint, request), pk=pk)
+    s = get_object_or_404(visible(Sprint, request), pk=pk)
     tickets = (
-        scoped(Ticket, request)
+        visible(Ticket, request)
         .filter(sprint=s)
         .select_related("assignee")
         .prefetch_related("labels")
@@ -470,7 +470,7 @@ def board_new(request):
             try:
                 from projects.models import Project
 
-                project = scoped(Project, request).filter(pk=pid).first()
+                project = visible(Project, request).filter(pk=pid).first()
             except Exception:  # noqa: BLE001
                 project = None
         Board.objects.create(
@@ -510,7 +510,7 @@ def sprint_new(request):
         board_obj = None
         bid = request.POST.get("board")
         if bid:
-            board_obj = scoped(Board, request).filter(pk=bid).first()
+            board_obj = visible(Board, request).filter(pk=bid).first()
         s = Sprint.objects.create(
             org=request.org,
             name=name,
@@ -527,7 +527,7 @@ def sprint_new(request):
 @org_required
 def sprint_action(request, pk):
     """Start (-> active) or complete (-> completed) a sprint."""
-    s = get_object_or_404(scoped(Sprint, request), pk=pk)
+    s = get_object_or_404(visible(Sprint, request), pk=pk)
     if request.method == "POST":
         action = request.POST.get("action")
         if action == "start":
@@ -546,11 +546,11 @@ def sprint_action(request, pk):
 @org_required
 def ticket_sprint(request, pk):
     """Add/remove a ticket to/from a sprint from the ticket detail page."""
-    t = get_object_or_404(scoped(Ticket, request), pk=pk)
+    t = get_object_or_404(visible(Ticket, request), pk=pk)
     if request.method == "POST":
         sid = (request.POST.get("sprint") or "").strip()
         if sid:
-            sprint_obj = scoped(Sprint, request).filter(pk=sid).first()
+            sprint_obj = visible(Sprint, request).filter(pk=sid).first()
             if sprint_obj is not None:
                 t.sprint = sprint_obj
                 t.save(update_fields=["sprint", "updated_at"])
@@ -593,10 +593,10 @@ def label_new(request):
 @org_required
 def ticket_labels(request, pk):
     """Set the labels on a ticket from a multi-value POST (org-scoped)."""
-    t = get_object_or_404(scoped(Ticket, request), pk=pk)
+    t = get_object_or_404(visible(Ticket, request), pk=pk)
     if request.method == "POST":
         ids = request.POST.getlist("labels")
-        org_labels = scoped(Label, request).filter(pk__in=ids)
+        org_labels = visible(Label, request).filter(pk__in=ids)
         t.labels.set(org_labels)
         services.log_activity(
             t,
@@ -624,7 +624,7 @@ def _ticket_project(ticket, request):
     try:
         from projects.models import Project
 
-        qs = scoped(Project, request)
+        qs = visible(Project, request)
         if qs.count() == 1:
             return qs.first()
     except Exception:  # noqa: BLE001
@@ -640,7 +640,7 @@ def ticket_work(request, pk):
     links the AgentRun to the ticket. Degrades gracefully (a flash message, no
     500) when the ticket has no project or agents/projects aren't available.
     """
-    t = get_object_or_404(scoped(Ticket, request), pk=pk)
+    t = get_object_or_404(visible(Ticket, request), pk=pk)
     if request.method != "POST":
         return redirect("issues:ticket", pk=t.pk)
 
@@ -689,7 +689,7 @@ def agent_backlog(request):
     from django.db.models import Q
 
     tickets = (
-        scoped(Ticket, request)
+        visible(Ticket, request)
         .select_related("incident", "pull_request", "agent_run", "assignee")
         .prefetch_related("labels")
         .filter(

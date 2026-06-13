@@ -3,7 +3,7 @@ import re
 from django.shortcuts import get_object_or_404, redirect, render
 from django.views.decorators.http import require_POST
 
-from accounts.scoping import org_required, scoped
+from accounts.scoping import org_required, visible
 
 from . import refs
 from .models import WorkflowRun
@@ -217,7 +217,7 @@ def _group_runs(runs):
 @org_required
 def workflow_list(request):
     """Org-scoped autonomous-build overview + workflow run table."""
-    org_runs = WorkflowRun.objects.for_org(request.org)
+    org_runs = visible(WorkflowRun, request)
 
     base = org_runs.select_related("project")
     filtered, active = _apply_filters(base, request)
@@ -235,8 +235,8 @@ def workflow_list(request):
     try:
         from observability.models import Incident
 
-        stats["resolved_incidents"] = Incident.objects.filter(
-            status="resolved", project__org=request.org
+        stats["resolved_incidents"] = visible(Incident, request).filter(
+            status="resolved"
         ).count()
     except Exception:  # noqa: BLE001
         pass
@@ -261,7 +261,7 @@ def workflow_table(request):
     Honors the same ?status=/?kind= params as workflow_list so live polling
     keeps the active filter. [ORC-6]
     """
-    base = WorkflowRun.objects.for_org(request.org).select_related("project")
+    base = visible(WorkflowRun, request).select_related("project")
     filtered, active = _apply_filters(base, request)
     runs = _decorate(_limit(filtered), request)
     return render(
@@ -308,7 +308,7 @@ def _inline_agent(run, request):
     try:
         from agents.models import AgentRun
 
-        qs = AgentRun.objects.for_org(org)
+        qs = visible(AgentRun, request)
 
         # Prefer the directly-linked agent run when the workflow points at one.
         if (run.ref_type or "") == "agent_run" and run.ref_id:
@@ -337,7 +337,7 @@ def _inline_agent(run, request):
 
 def _detail_context(request, pk):
     run = get_object_or_404(
-        scoped(WorkflowRun, request).select_related("project"), pk=pk
+        visible(WorkflowRun, request).select_related("project"), pk=pk
     )
     return {
         "run": run,
@@ -382,7 +382,7 @@ def activity_panel(request):
 def _activity_context(request):
     """Build the running-now context scoped to request.org."""
     workflows = list(
-        WorkflowRun.objects.for_org(request.org)
+        visible(WorkflowRun, request)
         .filter(status=WorkflowRun.Status.RUNNING)
         .select_related("project")[:50]
     )
@@ -393,7 +393,7 @@ def _activity_context(request):
 
         # AgentRun is org-scoped (OrgScopedModel); use for_org for tenancy.
         agents = list(
-            AgentRun.objects.for_org(request.org)
+            visible(AgentRun, request)
             .filter(status=AgentRun.Status.RUNNING)
             .select_related("project", "worktree")[:50]
         )
@@ -422,7 +422,7 @@ def _agents_context(request):
     try:
         from agents.models import AgentRun
 
-        qs = AgentRun.objects.for_org(request.org).select_related(
+        qs = visible(AgentRun, request).select_related(
             "project", "worktree"
         )
         # Summary counts over the whole org (not just the shown page).
@@ -480,9 +480,9 @@ def remediate_incident(request, incident_id):
     """
     from observability.models import Incident
 
-    # Scope strictly to request.org so a foreign-org incident is a 404.
+    # Visible to request.org (incl. shared org=None rows); foreign-org -> 404.
     inc = get_object_or_404(
-        Incident.objects.filter(org=request.org), pk=incident_id
+        visible(Incident, request), pk=incident_id
     )
 
     from . import service
@@ -493,7 +493,7 @@ def remediate_incident(request, incident_id):
 
     # Already remediating (guard) or no project — land on the live run if any.
     existing = (
-        WorkflowRun.objects.for_org(request.org)
+        visible(WorkflowRun, request)
         .filter(ref_type="incident", ref_id=inc.pk)
         .order_by("-created_at")
         .first()

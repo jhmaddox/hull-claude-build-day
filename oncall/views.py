@@ -13,7 +13,7 @@ from django.http import HttpResponseNotAllowed
 from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
 
-from accounts.scoping import org_required, scoped
+from accounts.scoping import org_required, visible
 from core.models import Event
 from observability.models import Incident
 
@@ -57,13 +57,13 @@ def _org_members(request):
 def board(request):
     """/oncall/ — open-incidents board (org-scoped)."""
     incidents = (
-        scoped(Incident, request)
+        visible(Incident, request)
         .select_related("project")
         .exclude(status=Incident.Status.RESOLVED)
         .order_by("-created_at")
     )
     resolved = (
-        scoped(Incident, request)
+        visible(Incident, request)
         .filter(status=Incident.Status.RESOLVED)
         .order_by("-resolved_at")[:10]
     )
@@ -298,7 +298,7 @@ def board_tick(request):
     tick failure can never 500 the fragment.
     """
     incidents = (
-        scoped(Incident, request)
+        visible(Incident, request)
         .select_related("project")
         .exclude(status=Incident.Status.RESOLVED)
         .order_by("-created_at")
@@ -383,7 +383,7 @@ def schedules(request):
             )
             messages.success(request, f"Created schedule '{name}'.")
         return redirect("oncall:schedules")
-    items = scoped(Schedule, request).order_by("name")
+    items = visible(Schedule, request).order_by("name")
     rows = []
     for s in items:
         rows.append({"schedule": s, "current": s.current_oncall()})
@@ -392,7 +392,7 @@ def schedules(request):
 
 @org_required
 def schedule_detail(request, pk):
-    schedule = get_object_or_404(scoped(Schedule, request), pk=pk)
+    schedule = get_object_or_404(visible(Schedule, request), pk=pk)
     if request.method == "POST":
         user_id = request.POST.get("user")
         target = _org_members(request).filter(pk=user_id).first() if user_id else None
@@ -432,17 +432,17 @@ def policies(request):
             )
             messages.success(request, f"Created policy '{name}'.")
         return redirect("oncall:policies")
-    items = scoped(EscalationPolicy, request).order_by("name")
+    items = visible(EscalationPolicy, request).order_by("name")
     return render(request, "oncall/policies.html", {"policies": items})
 
 
 @org_required
 def policy_detail(request, pk):
-    policy = get_object_or_404(scoped(EscalationPolicy, request), pk=pk)
+    policy = get_object_or_404(visible(EscalationPolicy, request), pk=pk)
     if request.method == "POST":
         sched_id = request.POST.get("target_schedule")
         target_schedule = (
-            scoped(Schedule, request).filter(pk=sched_id).first() if sched_id else None
+            visible(Schedule, request).filter(pk=sched_id).first() if sched_id else None
         )
         after = request.POST.get("after_minutes") or 0
         order = request.POST.get("order")
@@ -461,7 +461,7 @@ def policy_detail(request, pk):
         {
             "policy": policy,
             "steps": policy.ordered_steps(),
-            "schedules": scoped(Schedule, request).order_by("name"),
+            "schedules": visible(Schedule, request).order_by("name"),
         },
     )
 
@@ -475,7 +475,7 @@ def rules(request):
         name = (request.POST.get("name") or "").strip()
         policy_id = request.POST.get("policy")
         policy = (
-            scoped(EscalationPolicy, request).filter(pk=policy_id).first()
+            visible(EscalationPolicy, request).filter(pk=policy_id).first()
             if policy_id
             else None
         )
@@ -484,7 +484,7 @@ def rules(request):
         if project_id:
             from projects.models import Project
 
-            project = scoped(Project, request).filter(pk=project_id).first()
+            project = visible(Project, request).filter(pk=project_id).first()
         RoutingRule.objects.create(
             name=name[:200],
             org=getattr(request, "org", None),
@@ -501,8 +501,8 @@ def rules(request):
         request,
         "oncall/rules.html",
         {
-            "rules": scoped(RoutingRule, request).order_by("priority", "id"),
-            "policies": scoped(EscalationPolicy, request).order_by("name"),
-            "projects": scoped(Project, request).order_by("name"),
+            "rules": visible(RoutingRule, request).order_by("priority", "id"),
+            "policies": visible(EscalationPolicy, request).order_by("name"),
+            "projects": visible(Project, request).order_by("name"),
         },
     )

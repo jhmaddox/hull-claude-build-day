@@ -1,11 +1,13 @@
 """Enterprise UI: org settings, API keys, the audit log, and member role
 management — all RBAC-gated and strictly org-scoped via
-``Model.objects.for_org(request.org)`` / ``Membership.objects.filter(org=...)``.
+``visible(Model, request)`` / ``Membership.objects.filter(org=...)``.
 """
 
 from __future__ import annotations
 
 import csv
+
+from accounts.scoping import visible
 
 from django.contrib import messages
 from django.core.paginator import Paginator
@@ -69,10 +71,10 @@ def settings_view(request):
             "can_edit": can_edit,
             "role_counts": counts,
             "member_total": Membership.objects.filter(org=org).count(),
-            "active_keys": ApiKey.objects.for_org(org).filter(
+            "active_keys": visible(ApiKey, request).filter(
                 revoked_at__isnull=True
             ).count(),
-            "audit_count": AuditLog.objects.for_org(org).count(),
+            "audit_count": visible(AuditLog, request).count(),
         },
     )
 
@@ -80,7 +82,7 @@ def settings_view(request):
 @role_required("admin")
 def keys_view(request):
     org = request.org
-    keys = ApiKey.objects.for_org(org)
+    keys = visible(ApiKey, request)
     return render(
         request,
         "enterprise/keys.html",
@@ -106,14 +108,14 @@ def key_create(request):
 @role_required("admin")
 @require_POST
 def key_revoke(request, pk):
-    key = get_object_or_404(ApiKey.objects.for_org(request.org), pk=pk)
+    key = get_object_or_404(visible(ApiKey, request), pk=pk)
     services.revoke_api_key(key, actor_user=request.user)
     messages.success(request, f"API key “{key.name}” revoked.")
     return redirect("enterprise:keys")
 
 
 def _filtered_audit_rows(request):
-    rows = AuditLog.objects.for_org(request.org)
+    rows = visible(AuditLog, request)
     action = (request.GET.get("action") or "").strip()
     actor = (request.GET.get("actor") or "").strip()
     if action:
@@ -129,7 +131,7 @@ def audit_view(request):
     paginator = Paginator(rows, 50)
     page_obj = paginator.get_page(request.GET.get("page"))
     actions = (
-        AuditLog.objects.for_org(request.org)
+        visible(AuditLog, request)
         .order_by("action")
         .values_list("action", flat=True)
         .distinct()

@@ -5,7 +5,7 @@ from django.contrib import messages
 from django.db.models import Q
 from django.shortcuts import get_object_or_404, redirect, render
 
-from accounts.scoping import org_required
+from accounts.scoping import org_required, visible
 
 from . import services
 from .diffrender import render_diff, split_diff
@@ -73,7 +73,7 @@ def pr_new(request):
     """
     from projects.models import Project
 
-    projects = list(Project.objects.for_org(request.org).order_by("name"))
+    projects = list(visible(Project, request).order_by("name"))
 
     if request.method == "POST":
         form = {k: request.POST.get(k, "").strip() for k in

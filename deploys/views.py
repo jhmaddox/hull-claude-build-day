@@ -8,7 +8,7 @@ from django.urls import reverse
 from django.utils import timezone
 from django.views.decorators.csrf import csrf_exempt
 
-from accounts.scoping import org_required, scoped, visible
+from accounts.scoping import org_required, visible
 
 from .models import Deployment, Domain, EnvVar, Environment
 
@@ -355,7 +355,7 @@ def _env_vars_fragment(request, environment):
 def env_var_delete(request, env_pk, pk):
     environment = _get_env(request, env_pk)
     ev = get_object_or_404(
-        scoped(EnvVar, request), pk=pk, environment=environment
+        visible(EnvVar, request), pk=pk, environment=environment
     )
     ev.delete()
     if request.headers.get("HX-Request"):
@@ -406,7 +406,7 @@ def domains(request, env_pk):
 def domain_delete(request, env_pk, pk):
     environment = _get_env(request, env_pk)
     dom = get_object_or_404(
-        scoped(Domain, request), pk=pk, environment=environment
+        visible(Domain, request), pk=pk, environment=environment
     )
     dom.delete()
     messages.success(request, "Removed domain.")
