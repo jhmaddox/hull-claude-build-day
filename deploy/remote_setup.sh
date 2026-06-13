@@ -31,7 +31,7 @@ if ! command -v caddy >/dev/null; then
 fi
 
 echo "▸ Python env + deps"
-uv venv --python 3.11 .venv
+uv venv --python 3.11 --clear .venv
 source .venv/bin/activate
 uv pip install -r requirements.txt
 
