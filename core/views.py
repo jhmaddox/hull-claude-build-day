@@ -58,9 +58,12 @@ def _org_scope(qs, request):
     return qs.filter(Q(**{field: org}) | Q(**{f"{field}__isnull": True}))
 
 
-@login_required
 def dashboard(request):
-    """The Hull mission-control home: everything at a glance."""
+    """Root: a marketing splash for anonymous visitors, the mission-control
+    dashboard for signed-in users."""
+    if not request.user.is_authenticated:
+        return render(request, "core/landing.html")
+
     _adopt_deployments()
 
     projects = _org_scope(Project.objects.all(), request)

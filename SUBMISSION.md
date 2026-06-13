@@ -20,8 +20,8 @@ ticket to an agent, which works in an isolated **git worktree**, opens a **pull
 request** in Hull's own diff UI, and runs **CI** — then spins a **preview
 environment** so you can test the change before merge.
 
-The money shot: when production throws an error, Hull detects it from the live
-logs, opens a **PagerDuty-style incident**, spawns a Claude agent in a fresh
+The autonomous loop: when production throws an error, Hull detects it from the
+live logs, opens a **PagerDuty-style incident**, spawns a Claude agent in a fresh
 worktree that reproduces the bug, fixes the root cause, **adds a regression
 test**, opens a PR, runs CI green, and — after a human approves the merge
 (HITL by default; `HELM_AUTO_MERGE=1` closes the loop fully) — redeploys and

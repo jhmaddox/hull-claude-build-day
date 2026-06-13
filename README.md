@@ -1,4 +1,4 @@
-# ⎈ Hull — the autonomous software operating system
+# ⎈ Hull — the AI-native control plane for software teams
 
 > One control plane for your entire stack — version control, CI/CD, deployments,
 > observability, and incident response — **operated by a crew of Claude Opus 4.8
@@ -12,7 +12,7 @@ production-grade stack. Hull lets one engineer **import a legacy repo, stand up
 staging + prod, ship features through agents, and have production incidents
 fixed autonomously** — all from a single pane of glass.
 
-## The money shot 🎯
+## The autonomous loop 🎯
 
 A production app throws an error → Hull detects it from the live logs → opens a
 PagerDuty-style **incident** → spawns a **Claude agent in an isolated git

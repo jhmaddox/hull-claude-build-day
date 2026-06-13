@@ -1,0 +1,142 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{ HELM_PRODUCT }} — {{ HELM_TAGLINE }}</title>
+  <meta name="description" content="{{ HELM_PRODUCT }} is the AI-native control plane for software teams — version control, CI/CD, deployments, observability, and incident response in one pane, operated by Claude Opus 4.8 agents.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="{% static 'css/helm.css' %}">
+  <style>
+    /* ---- landing-only styling (marketing splash, no app chrome) ---- */
+    body { background:
+        radial-gradient(900px 480px at 85% -8%, rgba(240,163,90,.10), transparent 60%),
+        radial-gradient(700px 420px at 10% 5%, rgba(232,116,90,.08), transparent 55%),
+        var(--bg); }
+    .lp { max-width: 1080px; margin: 0 auto; padding: 0 24px; }
+    .lp-nav { display:flex; align-items:center; justify-content:space-between; padding: 22px 0; }
+    .lp-brand { display:flex; align-items:center; gap:10px; font-weight:700; font-size:18px; }
+    .lp-brand .mark { color: var(--accent); font-size: 22px; filter: drop-shadow(0 0 12px rgba(var(--accent-rgb),.6)); }
+    .lp-nav-actions { display:flex; align-items:center; gap:10px; }
+
+    .hero { text-align:center; padding: 64px 0 40px; }
+    .hero .eyebrow { display:inline-flex; align-items:center; gap:8px; margin-bottom:22px; }
+    .hero h1 { font-size: clamp(34px, 6vw, 62px); line-height:1.04; font-weight:800; letter-spacing:-.02em; margin: 0 auto 20px; max-width: 16ch; }
+    .hero h1 .grad { background: linear-gradient(120deg, var(--accent), var(--accent-2)); -webkit-background-clip:text; background-clip:text; color:transparent; }
+    .hero p.sub { font-size: clamp(16px, 2.2vw, 20px); color: var(--muted); max-width: 60ch; margin: 0 auto 30px; line-height:1.5; }
+    .hero-cta { display:flex; gap:12px; justify-content:center; flex-wrap:wrap; }
+    .btn-lg { padding: 12px 22px; font-size: 15px; border-radius: 10px; }
+
+    .replaces { display:flex; align-items:center; justify-content:center; gap:14px; flex-wrap:wrap; color:var(--faint); font-size:13px; margin-top:40px; }
+    .replaces .tools { display:flex; gap:10px; flex-wrap:wrap; justify-content:center; }
+    .replaces .tools span { padding:5px 11px; border:1px solid var(--border); border-radius:999px; color:var(--muted); background:var(--panel); }
+    .replaces .arrow { color: var(--accent); font-size:18px; }
+    .replaces .one { color: var(--text); font-weight:600; }
+
+    .section { padding: 56px 0; }
+    .section-title { text-align:center; font-size: clamp(24px,3.4vw,34px); font-weight:700; letter-spacing:-.01em; margin:0 0 10px; }
+    .section-lead { text-align:center; color:var(--muted); max-width:56ch; margin:0 auto 36px; line-height:1.5; }
+
+    /* the autonomous loop as a flowing stepper */
+    .loop { display:grid; grid-template-columns: repeat(auto-fit, minmax(150px,1fr)); gap:12px; }
+    .loop .step { position:relative; padding:18px 16px; border:1px solid var(--border); border-radius:var(--radius); background: linear-gradient(180deg, var(--panel), var(--panel-2)); }
+    .loop .step .n { font-family:var(--mono); font-size:12px; color:var(--accent); margin-bottom:8px; }
+    .loop .step .t { font-weight:600; font-size:14px; margin-bottom:4px; }
+    .loop .step .d { color:var(--muted); font-size:12.5px; line-height:1.45; }
+
+    .features { display:grid; grid-template-columns: repeat(auto-fit, minmax(280px,1fr)); gap:16px; }
+    .feature { padding:22px; border:1px solid var(--border); border-radius:var(--radius); background: linear-gradient(180deg, var(--panel), var(--panel-2)); }
+    .feature .ico { font-size:22px; }
+    .feature .role { font-family:var(--mono); font-size:11px; color:var(--faint); text-transform:uppercase; letter-spacing:.06em; margin:10px 0 4px; }
+    .feature h3 { margin:0 0 6px; font-size:16px; }
+    .feature p { margin:0; color:var(--muted); font-size:13.5px; line-height:1.5; }
+
+    .cta-band { text-align:center; padding: 60px 24px; margin: 24px 0 56px; border:1px solid var(--border); border-radius:var(--radius); background:
+        radial-gradient(600px 240px at 50% 0%, rgba(var(--accent-rgb),.10), transparent 70%), linear-gradient(180deg, var(--panel), var(--panel-2)); }
+    .cta-band h2 { font-size: clamp(22px,3vw,30px); margin:0 0 10px; }
+    .cta-band p { color:var(--muted); margin:0 0 22px; }
+
+    .lp-foot { display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:10px; padding: 26px 0 48px; color:var(--faint); font-size:13px; border-top:1px solid var(--border); }
+    .lp-foot a { color:var(--muted); }
+  </style>
+</head>
+<body>
+  <div class="lp">
+    <nav class="lp-nav">
+      <div class="lp-brand"><span class="mark">⎈</span> {{ HELM_PRODUCT }}</div>
+      <div class="lp-nav-actions">
+        <a class="btn btn-ghost" href="{% url 'accounts:login' %}">Sign in</a>
+        <a class="btn btn-primary" href="{% url 'accounts:signup' %}">Get started</a>
+      </div>
+    </nav>
+
+    <header class="hero">
+      <span class="eyebrow pill pill-live"><span class="dot dot-live"></span> crewed by Claude Opus 4.8</span>
+      <h1>The <span class="grad">control plane</span> for software teams</h1>
+      <p class="sub">
+        {{ HELM_PRODUCT }} unifies version control, CI/CD, deployments, observability,
+        and incident response into one pane — and operates it autonomously with a
+        crew of Claude Opus 4.8 agents. Import a repo, ship features through agents,
+        and let production incidents get fixed before you wake up.
+      </p>
+      <div class="hero-cta">
+        <a class="btn btn-primary btn-lg" href="{% url 'accounts:signup' %}">Get started free</a>
+        <a class="btn btn-lg" href="{% url 'accounts:login' %}">Sign in</a>
+      </div>
+
+      <div class="replaces">
+        <div class="tools">
+          <span>GitHub</span><span>Vercel</span><span>PagerDuty</span><span>Datadog</span>
+        </div>
+        <span class="arrow">→</span>
+        <span class="one">one control plane, run by agents</span>
+      </div>
+    </header>
+
+    <section class="section">
+      <h2 class="section-title">Production fixes itself</h2>
+      <p class="section-lead">
+        The flagship loop: a live error becomes a resolved incident — with a
+        reviewed pull request and a regression test — with no human firefighting.
+      </p>
+      <div class="loop">
+        <div class="step"><div class="n">01</div><div class="t">Error in prod</div><div class="d">{{ HELM_PRODUCT }} detects it from the live logs.</div></div>
+        <div class="step"><div class="n">02</div><div class="t">Incident opens</div><div class="d">A PagerDuty-style incident, in-product.</div></div>
+        <div class="step"><div class="n">03</div><div class="t">Agent dispatched</div><div class="d">Claude Opus 4.8 in an isolated git worktree.</div></div>
+        <div class="step"><div class="n">04</div><div class="t">Root-cause fix</div><div class="d">Reproduces, fixes, adds a regression test.</div></div>
+        <div class="step"><div class="n">05</div><div class="t">PR + CI</div><div class="d">Opens a pull request; CI runs to green.</div></div>
+        <div class="step"><div class="n">06</div><div class="t">Review &amp; ship</div><div class="d">You approve the merge; it redeploys, resolved.</div></div>
+      </div>
+    </section>
+
+    <section class="section">
+      <h2 class="section-title">One pane for the whole stack</h2>
+      <p class="section-lead">Everything an elite team needs to ship and operate production — without a platform org.</p>
+      <div class="features">
+        <div class="feature"><div class="ico">▤</div><div class="role">Import &amp; deploy · like Vercel</div><h3>Import any repo</h3><p>Runtime detection, then staging + prod with real public URLs (Docker Compose or managed processes, host-based routing + TLS).</p></div>
+        <div class="feature"><div class="ico">✦</div><div class="role">Agents · your IDE + engineer</div><h3>Ship through agents</h3><p>Hand a ticket to a Claude Opus 4.8 agent that works in a git worktree, opens a PR, and spins a preview environment to test.</p></div>
+        <div class="feature"><div class="ico">⑂</div><div class="role">Pull requests · like GitHub</div><h3>Review &amp; CI in-product</h3><p>Real git branches, a server-rendered diff UI, and CI that runs the project's own test suite on every PR.</p></div>
+        <div class="feature"><div class="ico">📈</div><div class="role">Observability · like Datadog</div><h3>Logs &amp; metrics</h3><p>Live log ingestion, request and error-rate metrics, and monitors that turn a threshold breach into an incident.</p></div>
+        <div class="feature"><div class="ico">⚠</div><div class="role">Incidents · like PagerDuty</div><h3>Autonomous on-call</h3><p>Errors open incidents, dispatch a remediation agent, and resolve — with a timeline you read after it's handled.</p></div>
+        <div class="feature"><div class="ico">⟳</div><div class="role">Orchestration · durable</div><h3>Runs that don't drop</h3><p>Long-running work (import, deploy, remediation) is orchestrated durably with Temporal, with a built-in fallback.</p></div>
+      </div>
+    </section>
+
+    <section class="cta-band">
+      <h2>Operate production like it's one product</h2>
+      <p>Spin it up, import a repo, and watch the loop close itself.</p>
+      <div class="hero-cta">
+        <a class="btn btn-primary btn-lg" href="{% url 'accounts:signup' %}">Get started free</a>
+        <a class="btn btn-lg" href="{% url 'accounts:login' %}">Sign in</a>
+      </div>
+    </section>
+
+    <footer class="lp-foot">
+      <div>⎈ {{ HELM_PRODUCT }} — {{ HELM_TAGLINE }}</div>
+      <div>Built at Claude Build Day · crewed by Claude Opus 4.8</div>
+    </footer>
+  </div>
+</body>
+</html>

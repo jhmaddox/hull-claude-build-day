@@ -1,5 +1,5 @@
 """
-Django settings for Hull — the autonomous software operating system.
+Django settings for Hull — the AI-native control plane for software teams.
 """
 
 import os
@@ -132,7 +132,7 @@ HELM_BASE_URL = os.environ.get("HELM_BASE_URL", "http://localhost:8000")
 # Rename the product here in one place.
 HELM_PRODUCT_NAME = os.environ.get("HELM_PRODUCT_NAME", "Hull")
 HELM_PRODUCT_TAGLINE = os.environ.get(
-    "HELM_PRODUCT_TAGLINE", "The autonomous software operating system"
+    "HELM_PRODUCT_TAGLINE", "The AI-native control plane for software teams"
 )
 
 # Command used to spawn autonomous Claude agents (headless).

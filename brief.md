@@ -1,4 +1,4 @@
-# Hull — the autonomous software operating system
+# Hull — the AI-native control plane for software teams
 
 ## The problem
 

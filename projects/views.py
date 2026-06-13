@@ -232,15 +232,23 @@ def import_steps_fragment(request, slug):
         visible(Project, request), slug=slug
     )
     steps = list(project.import_steps.all())
-    return render(
+    active = _import_in_progress(steps)
+    response = render(
         request,
         "projects/_import_steps.html",
         {
             "project": project,
             "import_steps": steps,
-            "import_active": _import_in_progress(steps),
+            "import_active": active,
         },
     )
+    # The page only polls this endpoint WHILE the import is active, so the first
+    # poll that comes back settled is exactly the active->done transition. Tell
+    # HTMX to do one full-page reload so the freshly-created environments,
+    # deployments, and status badge appear without the user hitting refresh.
+    if not active:
+        response["HX-Refresh"] = "true"
+    return response
 
 
 @org_required

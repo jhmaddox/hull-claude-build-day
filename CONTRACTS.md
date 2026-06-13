@@ -1,11 +1,11 @@
 # Hull — Build Contracts (read this first)
 
-**Hull** is an all-in-one autonomous software operating system: version control,
-CI/CD, deployments, observability, and incident response — operated by a crew of
-Claude agents. One control plane (this Django app) that mashes together GitHub +
-Vercel + PagerDuty + Datadog, run autonomously.
+**Hull** is an all-in-one, AI-native control plane for software teams: version
+control, CI/CD, deployments, observability, and incident response — operated by a
+crew of Claude agents. One control plane (this Django app) that mashes together
+GitHub + Vercel + PagerDuty + Datadog, run autonomously.
 
-**The money-shot demo:** a production app throws an error → Hull detects it →
+**The flagship demo:** a production app throws an error → Hull detects it →
 opens an incident (PagerDuty-style) → spawns a Claude agent in an isolated git
 worktree → the agent fixes the root cause + adds a regression test → opens a PR
 in Hull's own PR/diff UI → CI runs → green → merge → redeploy. Autonomously.
