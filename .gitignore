@@ -10,3 +10,4 @@ staticfiles/
 .env
 node_modules/
 .tool-versions
+.env.helm.local
