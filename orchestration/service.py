@@ -37,12 +37,16 @@ def _temporal_available() -> bool:
         return False
 
 
-def _run(name, fn, *, project=None, ref_type="", ref_id=None):
+def _run(name, fn, *, project=None, ref_type="", ref_id=None, temporal=None):
     """Create a WorkflowRun, run ``fn`` in the background, record the outcome.
 
-    ``fn`` is a zero-arg callable that performs the actual work. It runs on
-    Temporal when available, otherwise on a daemon thread (the demo path). The
-    WorkflowRun + a core.Event are updated on completion / failure.
+    ``fn`` is a zero-arg callable that performs the actual work (thread path).
+    ``temporal`` (optional) = (workflow_class_name, args_list): when Temporal is
+    enabled and reachable, the workflow is started on the cluster and its result
+    is awaited (the work runs in the worker, NOT here) — so it's durable and
+    visible in Temporal Cloud. If Temporal is unavailable or the start fails, we
+    fall back to running ``fn`` on a daemon thread. The WorkflowRun + a
+    core.Event are updated on completion / failure.
 
     Returns the WorkflowRun immediately.
     """
@@ -138,17 +142,53 @@ def _run(name, fn, *, project=None, ref_type="", ref_id=None):
 
             connection.close()
 
-    if use_temporal:
-        # Temporal path: dispatch the workflow, but still run the body on a
-        # thread so a missing worker can't block the request. The Temporal
-        # workflow classes live in ``temporal_workflows`` and reuse the same
-        # underlying logic; here we keep the fallback solid.
-        try:
-            from . import temporal_workflows  # noqa: F401  (registers defs)
-        except Exception:
-            pass
+    def _temporal_body():
+        """Start the workflow on the Temporal cluster and await its result.
 
-    t = threading.Thread(target=_body, name=f"wf-{wf.pk}", daemon=True)
+        The actual work runs in the worker process (the activity), making the
+        run durable + visible in Temporal Cloud. Falls back to the thread body
+        if the cluster/worker can't be reached.
+        """
+        import asyncio
+
+        from .temporal_client import connect, connection_label
+
+        wf_cls_name, wf_args = temporal
+
+        async def _go():
+            client = await connect()
+            from . import temporal_workflows as tw
+
+            wf_cls = getattr(tw, wf_cls_name)
+            handle = await client.start_workflow(
+                wf_cls.run,
+                args=wf_args,
+                id=f"hull-{name.replace(' ', '-')}-{wf.pk}",
+                task_queue=settings.HELM_TEMPORAL_TASK_QUEUE,
+            )
+            return await handle.result()
+
+        try:
+            result = asyncio.run(_go())
+            wf.status = WorkflowRun.Status.DONE
+            wf.ended_at = timezone.now()
+            wf.detail = (f"[temporal:{connection_label()}] {result}")[:10000]
+            _save_wf(["status", "ended_at", "detail"])
+            Event.log(f"workflow {name} completed (Temporal)", project=project,
+                      actor="orchestrator", level="success", icon="check")
+        except Exception as exc:  # noqa: BLE001 — fall back to local thread
+            Event.log(f"Temporal dispatch unavailable ({exc}); running locally",
+                      project=project, actor="orchestrator", level="warning", icon="deploy")
+            WorkflowRun.objects.filter(pk=wf.pk).update(backend="thread")
+            _body()
+        finally:
+            from django.db import connection as _c
+            _c.close()
+
+    if use_temporal and temporal is not None:
+        t = threading.Thread(target=_temporal_body, name=f"wf-{wf.pk}", daemon=True)
+    else:
+        t = threading.Thread(target=_body, name=f"wf-{wf.pk}", daemon=True)
     t.start()
     return wf
 
@@ -208,6 +248,7 @@ def deploy(environment_id: int, *, commit_sha: str | None = None):
         project=project,
         ref_type="environment",
         ref_id=environment_id,
+        temporal=("DeployWorkflow", [environment_id, commit_sha]),
     )
 
 
@@ -238,6 +279,7 @@ def run_feature_agent(agent_run_id: int):
         project=project,
         ref_type="agent_run",
         ref_id=agent_run_id,
+        temporal=("RunAgentWorkflow", [agent_run_id]),
     )
 
 
@@ -316,6 +358,7 @@ def run_ci(pull_request_id: int):
         project=project,
         ref_type="pull_request",
         ref_id=pull_request_id,
+        temporal=("RunCIWorkflow", [pull_request_id]),
     )
 
 

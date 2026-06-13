@@ -5,6 +5,7 @@ from . import auth, views
 app_name = "enterprise"
 
 urlpatterns = [
+    path("", views.audit_view, name="home"),
     path("settings/", views.settings_view, name="settings"),
     path("keys/", views.keys_view, name="keys"),
     path("keys/create/", views.key_create, name="key_create"),

@@ -30,13 +30,12 @@ class Command(BaseCommand):
             return
 
         from orchestration import temporal_workflows as tw
+        from orchestration.temporal_client import connect, connection_label
 
-        host = settings.HELM_TEMPORAL_HOST
-        namespace = settings.HELM_TEMPORAL_NAMESPACE
         task_queue = settings.HELM_TEMPORAL_TASK_QUEUE
 
         async def _main():
-            client = await Client.connect(host, namespace=namespace)
+            client = await connect()
             worker = Worker(
                 client,
                 task_queue=task_queue,
@@ -45,7 +44,7 @@ class Command(BaseCommand):
             )
             self.stdout.write(
                 self.style.SUCCESS(
-                    f"Hull worker connected to {host} (ns={namespace}) "
+                    f"Hull worker connected to {connection_label()} "
                     f"on task queue '{task_queue}' — waiting for work…"
                 )
             )

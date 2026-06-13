@@ -242,12 +242,21 @@ def _tee_output(deployment, popen, log_path):
         pass
 
 
-def _health_poll(port: int, timeout: float = 40.0) -> bool:
+def _health_poll(port: int, timeout: float = 40.0, popen=None) -> bool:
+    """Poll the deployment for health.
+
+    If ``popen`` is given and the process exits before becoming healthy, fail
+    immediately — this catches a failed port bind (e.g. an orphan squatting on
+    the port), so we don't falsely report LIVE against someone else's process.
+    """
     import requests
 
     deadline = time.time() + timeout
     url = f"http://127.0.0.1:{port}/"
     while time.time() < deadline:
+        if popen is not None and popen.poll() is not None:
+            # Process died (commonly: couldn't bind the port). Not healthy.
+            return False
         try:
             resp = requests.get(url, timeout=3, allow_redirects=False)
             if resp.status_code < 500:
@@ -426,8 +435,9 @@ def deploy(environment, *, commit_sha: str | None = None, source_path: str | Non
 
         tailer.start_tailer(deployment, from_start=True)
 
-        # Health-poll.
-        healthy = _health_poll(port, timeout=40.0)
+        # Health-poll (process-aware: fails fast if the process dies, e.g. a
+        # failed port bind, instead of passing against an orphan squatter).
+        healthy = _health_poll(port, timeout=40.0, popen=popen)
         if not healthy:
             # Process may have died; capture exit if so.
             rc = popen.poll()

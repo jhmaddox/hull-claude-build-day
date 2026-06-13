@@ -138,7 +138,20 @@ HELM_AGENT_MODEL = os.environ.get("HELM_AGENT_MODEL", "claude-opus-4-8")
 
 # Temporal — orchestration backend. If unreachable, Hull falls back to an
 # in-process threaded runner so the product still works without the server.
-HELM_TEMPORAL_HOST = os.environ.get("HELM_TEMPORAL_HOST", "localhost:7233")
-HELM_TEMPORAL_NAMESPACE = os.environ.get("HELM_TEMPORAL_NAMESPACE", "default")
-HELM_TEMPORAL_TASK_QUEUE = os.environ.get("HELM_TEMPORAL_TASK_QUEUE", "helm")
-HELM_USE_TEMPORAL = os.environ.get("HELM_USE_TEMPORAL", "0") == "1"
+# Connection: prefer the standard TEMPORAL_* env vars (Temporal Cloud), falling
+# back to the HELM_TEMPORAL_* names / local dev server.
+HELM_TEMPORAL_HOST = os.environ.get(
+    "TEMPORAL_ADDRESS", os.environ.get("HELM_TEMPORAL_HOST", "localhost:7233")
+)
+HELM_TEMPORAL_NAMESPACE = os.environ.get(
+    "TEMPORAL_NAMESPACE", os.environ.get("HELM_TEMPORAL_NAMESPACE", "default")
+)
+HELM_TEMPORAL_TASK_QUEUE = os.environ.get("HELM_TEMPORAL_TASK_QUEUE", "hull-orchestration")
+# Temporal Cloud auth (API key + TLS). Empty key + tls off => local dev server.
+HELM_TEMPORAL_API_KEY = os.environ.get("TEMPORAL_API_KEY", "")
+HELM_TEMPORAL_TLS = os.environ.get("TEMPORAL_TLS_ENABLED", "false") == "true"
+# Enable Temporal-backed orchestration when explicitly turned on OR when a Cloud
+# API key is present.
+HELM_USE_TEMPORAL = (
+    os.environ.get("HELM_USE_TEMPORAL", "0") == "1" or bool(HELM_TEMPORAL_API_KEY)
+)

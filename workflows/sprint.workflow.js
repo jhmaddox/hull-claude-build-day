@@ -77,7 +77,23 @@ const WIDE = {
   ],
 }
 
-const SPRINTS = { '1': WIDE, wide: WIDE }
+// Targeted follow-up: finish the two workstreams that didn't fully pass QA.
+const FIX_OPS = {
+  goal: 'Close the remaining rubric gaps in Observability v2 and Incidents v2 (oncall) from the build-out; keep all existing functionality and the autonomous loop intact.',
+  qa_rounds: 3,
+  workstreams: WIDE.workstreams
+    .filter((w) => ['observability', 'oncall'].includes(w.key))
+    .map((w) => ({
+      ...w,
+      build_brief:
+        w.build_brief +
+        ` NOTE: this app ALREADY EXISTS from the prior sprint — do NOT rebuild from scratch. Read ` +
+        `docs/prd/${w.key}.md and the current code, then COMPLETE only the rubric items not yet satisfied. ` +
+        `Preserve every working feature and the autonomous loop.`,
+    })),
+}
+
+const SPRINTS = { '1': WIDE, wide: WIDE, 'fix-ops': FIX_OPS }
 
 // --------------------------------------------------------------------------- //
 const sprintKey = (args && args.sprint != null) ? String(args.sprint) : '1'

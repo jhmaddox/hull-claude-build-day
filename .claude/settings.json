@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "extraKnownMarketplaces": {
+    "temporal-marketplace": {
+      "source": {
+        "source": "github",
+        "repo": "temporalio/claude-temporal-plugin"
+      }
+    }
+  },
+  "enabledPlugins": {
+    "temporal@temporal-marketplace": true
+  }
+}
