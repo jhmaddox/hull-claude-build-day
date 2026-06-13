@@ -2,7 +2,9 @@ from django.contrib import messages
 from django.core.paginator import Paginator
 from django.shortcuts import get_object_or_404, redirect, render
 
-from accounts.scoping import org_required
+from django.db.models import Q
+
+from accounts.scoping import org_required, visible
 from core.models import Event
 from deploys.models import Deployment
 
@@ -14,10 +16,18 @@ from .models import Incident, LogLine, MetricPoint, Monitor
 # Org-scoping helpers
 # --------------------------------------------------------------------------- #
 def _org_deployments(request):
-    """Deployments whose owning project belongs to the request's org."""
-    return Deployment.objects.filter(
-        environment__project__org=request.org
-    ).select_related("environment__project")
+    """Deployments whose owning project is visible to the request's org —
+    current-org rows plus shared (org=None) rows. Deployment reaches org only via
+    ``environment__project__org`` (no direct field), so we apply the OR-null
+    policy inline rather than via ``visible()``."""
+    qs = Deployment.objects.select_related("environment__project")
+    org = getattr(request, "org", None)
+    if org is None:
+        return qs
+    return qs.filter(
+        Q(environment__project__org=org)
+        | Q(environment__project__org__isnull=True)
+    )
 
 
 def _get_org_deployment(request, pk):
@@ -26,7 +36,7 @@ def _get_org_deployment(request, pk):
 
 
 def _org_incidents(request):
-    return Incident.objects.filter(project__org=request.org)
+    return visible(Incident, request)
 
 
 def _deployment_metric_series(deployment, name, limit=30):
@@ -206,7 +216,7 @@ def overview(request):
     # Firing monitors = org monitors whose derived live status is 'alerting'.
     firing_monitors = sum(
         1
-        for m in Monitor.objects.for_org(request.org)
+        for m in visible(Monitor, request)
         if m.live_status() == "alerting"
     )
     summary = {
@@ -243,7 +253,7 @@ def _org_projects(request):
     """Projects belonging to the request's org (for the declare form)."""
     from projects.models import Project
 
-    return Project.objects.for_org(request.org).order_by("name")
+    return visible(Project, request).order_by("name")
 
 
 @org_required
@@ -647,7 +657,7 @@ def _apply_monitor_form(request, monitor):
 @org_required
 def monitor_list(request):
     monitors = (
-        Monitor.objects.for_org(request.org)
+        visible(Monitor, request)
         .select_related("deployment__environment__project")
     )
     return render(
@@ -682,7 +692,7 @@ def monitor_new(request):
 
 @org_required
 def monitor_edit(request, pk):
-    monitor = get_object_or_404(Monitor.objects.for_org(request.org), pk=pk)
+    monitor = get_object_or_404(visible(Monitor, request), pk=pk)
     if request.method == "POST":
         errors = _apply_monitor_form(request, monitor)
         if errors:
@@ -705,13 +715,13 @@ def monitor_edit(request, pk):
 def monitor_mute(request, pk):
     """POST mute/snooze (e.g. ?minutes=30). minutes=0 clears the mute.
 
-    Scoped to ``Monitor.objects.for_org(request.org)`` so muting another org's
+    Scoped to ``visible(Monitor, request)`` so muting another org's
     monitor 404s. Sets ``muted_until = now + minutes`` (time-based, auto-expires)
     and narrates via ``core.Event``.
     """
     from django.utils import timezone
 
-    monitor = get_object_or_404(Monitor.objects.for_org(request.org), pk=pk)
+    monitor = get_object_or_404(visible(Monitor, request), pk=pk)
     if request.method != "POST":
         return redirect("observability:monitor_list")
 
@@ -753,7 +763,7 @@ def monitor_toggle(request, pk):
     ``evaluate_monitors`` — a disabled monitor is simply excluded by its
     ``enabled=True`` filter, and ``live_status()`` reflects the new state.
     """
-    monitor = get_object_or_404(Monitor.objects.for_org(request.org), pk=pk)
+    monitor = get_object_or_404(visible(Monitor, request), pk=pk)
     if request.method != "POST":
         return redirect("observability:monitor_list")
 
@@ -781,7 +791,7 @@ def monitor_detail(request, pk):
     Never shows traceback/suspect_file incidents. Org-scoped via for_org.
     """
     monitor = get_object_or_404(
-        Monitor.objects.for_org(request.org).select_related(
+        visible(Monitor, request).select_related(
             "deployment__environment__project"
         ),
         pk=pk,
@@ -808,7 +818,7 @@ def monitor_detail(request, pk):
 
 @org_required
 def monitor_delete(request, pk):
-    monitor = get_object_or_404(Monitor.objects.for_org(request.org), pk=pk)
+    monitor = get_object_or_404(visible(Monitor, request), pk=pk)
     if request.method == "POST":
         monitor.delete()
         messages.success(request, "Monitor deleted.")
