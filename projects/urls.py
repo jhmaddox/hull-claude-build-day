@@ -14,4 +14,5 @@ urlpatterns = [
         name="import_steps",
     ),
     path("<slug:slug>/deploy/<int:env_pk>/", views.project_deploy, name="deploy"),
+    path("<slug:slug>/delete/", views.project_delete, name="delete"),
 ]

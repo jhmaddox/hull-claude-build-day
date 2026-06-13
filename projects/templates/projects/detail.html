@@ -15,6 +15,12 @@
     <span class="badge badge-neutral">{{ project.framework }}</span>
     <span class="badge badge-neutral mono">{{ project.default_branch }}</span>
     <span class="badge {{ project.status|status_badge }}">{{ project.get_status_display }}</span>
+    <form method="post" action="{% url 'projects:delete' project.slug %}"
+          onsubmit="return confirm('Delete “{{ project.name|escapejs }}”? This stops its deployments and removes the project. This cannot be undone.');"
+          style="margin:0;">
+      {% csrf_token %}
+      <button type="submit" class="btn btn-danger btn-sm">Delete</button>
+    </form>
   </div>
 </div>
 

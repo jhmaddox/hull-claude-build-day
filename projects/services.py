@@ -443,37 +443,32 @@ def _ensure_local_git_repo(repo_url: str) -> None:
     if "://" in repo_url and not repo_url.startswith("file://"):
         return
     path = repo_url[len("file://"):] if repo_url.startswith("file://") else repo_url
-    if not os.path.isdir(path) or os.path.isdir(os.path.join(path, ".git")):
+    if not os.path.isdir(path):
         return
     env = {**os.environ, "GIT_AUTHOR_NAME": "Hull", "GIT_AUTHOR_EMAIL": "helm@helm.dev",
            "GIT_COMMITTER_NAME": "Hull", "GIT_COMMITTER_EMAIL": "helm@helm.dev"}
-    subprocess.run(["git", "init", "-b", "main"], cwd=path, env=env,
-                   stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+    if not os.path.isdir(os.path.join(path, ".git")):
+        subprocess.run(["git", "init", "-b", "main"], cwd=path, env=env,
+                       stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+    # Snapshot the CURRENT working tree so the clone reflects the latest source
+    # (e.g. an edited sample app), not a stale earlier commit. `commit` is a
+    # no-op (nonzero exit, ignored) when there's nothing new to commit.
     subprocess.run(["git", "add", "-A"], cwd=path, env=env,
                    stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
-    subprocess.run(["git", "commit", "-m", "Import baseline"], cwd=path, env=env,
+    subprocess.run(["git", "commit", "-m", "Hull import snapshot"], cwd=path, env=env,
                    stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
 
 
-def import_project(name: str, repo_url: str, *, description: str = "", org=None):
-    """Clone ``repo_url`` into settings.HELM_REPOS_DIR/<slug>, detect runtime,
-    create ``staging`` (branch=default) and ``prod`` (branch=default)
-    Environments, mark the Project READY, and log core.Event entries.
-
-    May be called for a local path repo_url too (use ``file://`` or a path).
-    Returns the Project. Sets Project.status=FAILED + import_log on error.
-
-    ``org`` is keyword-only and defaults to ``None`` so the autonomous loop and
-    any existing callers keep working unchanged; UI imports pass ``request.org``
-    so the created Project is tagged with the acting user's active org.
-    """
+def begin_import(name: str, repo_url: str, *, description: str = "", org=None):
+    """Create the Project shell (status=IMPORTING) + seed the import-step rows,
+    and return it IMMEDIATELY so the UI can redirect to the project page and
+    watch the live progress stepper. The actual clone/detect/deploy work runs
+    afterward via ``import_project(project=...)``."""
     from core.models import Event
-    from deploys.models import Environment
     from .models import Project
 
     slug = _unique_slug(name, org=org)
     dest = os.path.join(str(settings.HELM_REPOS_DIR), slug)
-
     project = Project.objects.create(
         name=name,
         slug=slug,
@@ -483,17 +478,29 @@ def import_project(name: str, repo_url: str, *, description: str = "", org=None)
         local_path=dest,
         org=org,
     )
-
-    Event.log(
-        f"is importing project {name}",
-        project=project,
-        icon="rocket",
-        level="info",
-    )
-
-    from .models import ImportStep
-
+    Event.log(f"is importing project {name}", project=project, icon="rocket", level="info")
     _seed_import_steps(project)
+    return project
+
+
+def import_project(name: str, repo_url: str, *, description: str = "", org=None, project=None):
+    """Clone ``repo_url`` into settings.HELM_REPOS_DIR/<slug>, detect runtime,
+    create ``staging`` + ``prod`` Environments, mark the Project READY, log
+    core.Event entries, and advance the import-step stepper.
+
+    If ``project`` is given (from ``begin_import``), the shell already exists and
+    we just run the work on it; otherwise the shell is created here. Returns the
+    Project. Sets Project.status=FAILED + import_log on error.
+    """
+    from core.models import Event
+    from deploys.models import Environment
+    from .models import ImportStep, Project
+
+    if project is None:
+        project = begin_import(name, repo_url, description=description, org=org)
+    slug = project.slug
+    dest = project.local_path
+    repo_url = project.repo_url or repo_url
 
     log_parts = []
     try:

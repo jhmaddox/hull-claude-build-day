@@ -222,14 +222,20 @@ def _run(name, fn, *, project=None, ref_type="", ref_id=None, temporal=None,
 # --------------------------------------------------------------------------- #
 # Public workflow entry points
 # --------------------------------------------------------------------------- #
-def import_project(name: str, repo_url: str, *, description: str = ""):
-    """Background: projects.services.import_project then auto-deploy each env."""
+def import_project(name: str, repo_url: str, *, description: str = "", org=None, project=None):
+    """Background: projects.services.import_project then auto-deploy each env.
+
+    ``org`` tags the created Project; ``project`` (from begin_import) lets the UI
+    pre-create the shell + redirect, then we run the work on it here."""
 
     def _do():
         from deploys import services as deploy_svc
         from projects import services as proj_svc
 
-        project = proj_svc.import_project(name, repo_url, description=description)
+        project_ = proj_svc.import_project(
+            name, repo_url, description=description, org=org, project=project
+        )
+        project = project_
         if project is None:
             return "import returned no project"
         from projects.models import Project
@@ -663,14 +669,17 @@ def _remediate_pipeline(incident_id: int) -> str:
         )
         return f"INC-{inc.number}: CI failed, PR #{pr.number} open"
 
-    if os.environ.get("HELM_AUTO_MERGE", "1") != "1":
+    # Default to HUMAN-IN-THE-LOOP: the remediation agent prepares the fix + PR
+    # and runs CI, but a human reviews & merges. Set HELM_AUTO_MERGE=1 to let the
+    # loop merge + redeploy fully autonomously.
+    if os.environ.get("HELM_AUTO_MERGE", "0") != "1":
         ev(
-            f"INC-{inc.number}: CI green — PR #{pr.number} ready for human merge",
+            f"INC-{inc.number}: CI green — PR #{pr.number} ready for human review & merge",
             level="success",
             icon="check",
             url=pr.get_absolute_url(),
         )
-        return f"INC-{inc.number}: CI green, auto-merge disabled"
+        return f"INC-{inc.number}: CI green, awaiting human merge (HITL)"
 
     ev(f"INC-{inc.number}: CI green ✓ — merging PR #{pr.number}", icon="merge",
        url=pr.get_absolute_url())

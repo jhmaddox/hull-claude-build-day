@@ -97,6 +97,41 @@ def create_worktree(project, name: str, *, base_branch: str | None = None):
     return worktree
 
 
+def _deploy_preview(worktree_pk):
+    """Deploy a worktree as a PREVIEW environment (its own hostname) so an
+    agent's changes can be tested live before merge. Best-effort daemon thread."""
+    try:
+        from deploys import services as deploy_svc
+        from deploys.models import Environment
+
+        from .models import Worktree
+
+        wt = Worktree.objects.filter(pk=worktree_pk).select_related("project").first()
+        if wt is None or not wt.path:
+            return
+        project = wt.project
+        tail = wt.branch.split("/")[-1]
+        env, _ = Environment.objects.get_or_create(
+            project=project,
+            worktree=wt,
+            kind=Environment.Kind.PREVIEW,
+            defaults={
+                "name": f"preview-{tail}"[:100],
+                "branch": wt.branch,
+                "org": getattr(wt, "org", None),
+                "runtime": (
+                    Environment.Runtime.COMPOSE
+                    if getattr(project, "framework", "") == "compose"
+                    else Environment.Runtime.PROCESS
+                ),
+            },
+        )
+        # Deploy the worktree's checked-out source directly (its committed changes).
+        deploy_svc.deploy(env, source_path=wt.path)
+    except Exception:  # noqa: BLE001 — preview is best-effort, never crash the run
+        pass
+
+
 # ---------------------------------------------------------------------------
 # stream-json parsing helpers
 # ---------------------------------------------------------------------------
@@ -329,6 +364,18 @@ def run_agent(agent_run) -> None:
                 inc.save(update_fields=["remediation_pr"])
             except Exception:  # noqa: BLE001
                 pass
+
+        # Spin a PREVIEW environment from the worktree so the agent's changes can
+        # be tested at a live URL before merging (feature/chore work).
+        if (
+            commit_sha
+            and worktree is not None
+            and agent_run.kind in (AgentRun.Kind.FEATURE, AgentRun.Kind.CHORE)
+        ):
+            _append(agent_run, "🌱 spinning a preview environment to test the changes…")
+            threading.Thread(
+                target=_deploy_preview, args=(worktree.pk,), daemon=True
+            ).start()
 
         Event.log(
             f"agent finished: {agent_run.title}"

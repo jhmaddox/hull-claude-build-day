@@ -47,16 +47,44 @@ function page() {
 </div></body></html>`;
 }
 
+// Access log in a format Hull's log ingestion parses (records req/error/latency
+// metrics + powers monitors): `"GET /path HTTP/1.1" 200 123`.
+function accessLog(req, status, bytes) {
+  const ts = new Date().toISOString();
+  console.log(`[${ts}] "${req.method} ${req.url} HTTP/1.1" ${status} ${bytes}`);
+}
+
 const server = http.createServer((req, res) => {
-  if (req.url === "/healthz") {
+  const path = (req.url || "/").split("?")[0];
+
+  if (path === "/healthz") {
+    const body = JSON.stringify({ status: "ok" });
     res.writeHead(200, { "Content-Type": "application/json" });
-    res.end(JSON.stringify({ status: "ok" }));
+    res.end(body);
+    accessLog(req, 200, Buffer.byteLength(body));
     return;
   }
+
+  // Demo bug: /boom returns HTTP 500 (drives error-rate -> Hull incident).
+  if (path === "/boom" || path === "/checkout") {
+    const msg = "checkout failed: inventory service returned a malformed price";
+    console.error(`ERROR ${msg} (path=${path})`);
+    const body = "<h1>500 — Internal Server Error</h1>";
+    res.writeHead(500, { "Content-Type": "text/html; charset=utf-8" });
+    res.end(body);
+    accessLog(req, 500, Buffer.byteLength(body));
+    return;
+  }
+
+  const body = page();
   res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
-  res.end(page());
+  res.end(body);
+  accessLog(req, 200, Buffer.byteLength(body));
 });
 
 server.listen(PORT, HOST, () => {
   console.log(`WidgetCart listening on http://${HOST}:${PORT}`);
+  console.log("INFO catalog loaded: " + WIDGETS.length + " widgets");
+  // Ambient heartbeat so the live log viewer always has fresh lines to show.
+  setInterval(() => console.log(`INFO heartbeat ok · ${WIDGETS.length} widgets in catalog`), 15000);
 });

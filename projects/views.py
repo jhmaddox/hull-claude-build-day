@@ -111,57 +111,52 @@ def project_new(request):
                 {"name": name, "repo_url": repo_url, "description": description},
             )
 
-        # Tag the import with the acting user's active org so the created
-        # Project is scoped to their tenant.
+        # Create the project shell synchronously + redirect straight to its page
+        # so the user watches the live import stepper. The clone/detect/deploy
+        # work runs in the background.
+        from . import services as project_services
+
         org = getattr(request, "org", None)
+        project = project_services.begin_import(
+            name, repo_url, description=description, org=org
+        )
         threading.Thread(
-            target=_import_in_background,
-            args=(name, repo_url, description),
-            kwargs={"org": org},
-            daemon=True,
+            target=_import_in_background, args=(project.id,), daemon=True
         ).start()
-        messages.success(request, f"Importing {name}… this runs in the background.")
-        return redirect(reverse("projects:list"))
+        messages.success(request, f"Importing {name}…")
+        return redirect(project.get_absolute_url())
 
     return render(request, "projects/new.html", {"org": request.org})
 
 
-def _import_in_background(name, repo_url, description, *, org=None):
-    """Prefer orchestration.import_project (which also auto-deploys). If that
-    raises NotImplementedError, fall back to projects.services.import_project +
-    auto-deploy each environment via deploys.services.deploy.
+def _import_in_background(project_id):
+    """Run the clone/detect/deploy work on an already-created project shell
+    (from ``begin_import``), advancing the live import stepper. Prefer the
+    orchestration path (durable + a WorkflowRun); fall back to the direct
+    services path on any error."""
+    from . import services as project_services
+    from .models import Project
 
-    ``org`` tags the created Project with the acting tenant. We try to pass it
-    to orchestration if that layer accepts it (additive kwarg); if not, we fall
-    back to the direct service path which always honors ``org`` — this keeps the
-    autonomous loop's existing org-less behavior intact while guaranteeing UI
-    imports are org-tagged."""
-    from orchestration import service as orch
+    project = Project.objects.filter(pk=project_id).first()
+    if project is None:
+        return
 
     try:
-        try:
-            orch.import_project(name, repo_url, description=description, org=org)
-        except TypeError:
-            # Orchestration layer doesn't accept org yet — only use the
-            # orchestration path untagged when there is no org to preserve.
-            if org is not None:
-                raise
-            orch.import_project(name, repo_url, description=description)
-        return
-    except NotImplementedError:
-        pass
-    except Exception:  # noqa: BLE001 — fall through to direct path on any error
-        pass
+        from orchestration import service as orch
 
-    from . import services as project_services
+        orch.import_project(
+            project.name, project.repo_url, description=project.description,
+            org=project.org, project=project,
+        )
+        return
+    except Exception:  # noqa: BLE001 — fall through to the direct path
+        pass
 
     project = project_services.import_project(
-        name, repo_url, description=description, org=org
+        project.name, project.repo_url, project=project, org=project.org
     )
     if project.status != Project.Status.READY:
         return
-    # Deploy staging first, then prod, advancing the live import stepper for
-    # each (deploy_environment wraps deploys.services.deploy additively).
     for env in sorted(project.environments.all(), key=lambda e: e.name != "staging"):
         try:
             project_services.deploy_environment(env)
@@ -274,3 +269,38 @@ def project_deploy(request, slug, env_pk):
     threading.Thread(target=_go, daemon=True).start()
     messages.success(request, f"Deploying {project.name} / {env.name}…")
     return redirect(project.get_absolute_url())
+
+
+@org_required
+def project_delete(request, slug):
+    """Delete a project: stop its deployments (process + compose), then remove it
+    (cascades envs/deployments/domains/incidents/agent runs). Demo-friendly reset.
+    """
+    project = get_object_or_404(visible(Project, request), slug=slug)
+    if request.method != "POST":
+        return redirect(project.get_absolute_url())
+
+    import subprocess as _sp
+
+    from deploys import services as deploy_services
+
+    for env in project.environments.all():
+        for dep in env.deployments.all():
+            try:
+                deploy_services.stop(dep)
+            except Exception:  # noqa: BLE001
+                pass
+        # Best-effort compose teardown by project name (no file needed).
+        try:
+            from deploys.compose.runtime import compose_project_name
+
+            pname = compose_project_name(project.slug, env.name)
+            _sp.run(["docker", "compose", "-p", pname, "down", "-v"],
+                    stdout=_sp.PIPE, stderr=_sp.STDOUT, timeout=60)
+        except Exception:  # noqa: BLE001
+            pass
+
+    name = project.name
+    project.delete()
+    messages.success(request, f"Deleted project “{name}”.")
+    return redirect("projects:list")

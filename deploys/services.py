@@ -51,6 +51,30 @@ def _ensure_domain(environment):
         pass
 
 
+def _ensure_default_monitor(deployment):
+    """Give a deployment a default error-rate Monitor (idempotent) so a spike of
+    5xx responses (e.g. hitting WidgetCart's /boom) auto-opens an Incident — the
+    Datadog/PagerDuty story without manual setup. Best-effort, never fails a deploy."""
+    try:
+        from observability.models import Monitor
+
+        if Monitor.objects.filter(deployment=deployment).exists():
+            return
+        Monitor.objects.create(
+            deployment=deployment,
+            org=getattr(deployment, "org", None),
+            name="Error rate",
+            metric=Monitor.Metric.ERROR_RATE,
+            comparator=Monitor.Comparator.GT,
+            threshold=25.0,
+            window_minutes=5,
+            severity=Monitor.Severity.SEV2,
+            enabled=True,
+        )
+    except Exception:  # noqa: BLE001 — monitor setup must never fail a deploy
+        pass
+
+
 # ---------------------------------------------------------------------------
 # Ports
 # ---------------------------------------------------------------------------
@@ -263,6 +287,40 @@ def _tee_output(deployment, popen, log_path):
                 try:
                     obs.ingest_line(deployment, line)
                 except Exception:  # noqa: BLE001 — ingest must never kill deploy
+                    pass
+    except Exception:  # noqa: BLE001
+        pass
+
+
+def _tee_compose_logs(deployment_pk, app_dir, compose_path, project_name, log_path):
+    """Follow a compose stack's container logs and stream each line into Hull's
+    observability ingestion (LogLines + metrics + monitors), so Docker-Compose
+    deployments are as observable as the process runtime. Resolves the deployment
+    by pk each line so it's safe across threads. Best-effort."""
+    from observability import services as obs
+
+    cmd = [
+        "docker", "compose", "-p", project_name, "-f", compose_path,
+        "logs", "-f", "--no-color", "--no-log-prefix", "--tail", "0",
+    ]
+    try:
+        proc = subprocess.Popen(
+            cmd, cwd=app_dir, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+            text=True, bufsize=1,
+        )
+    except Exception:  # noqa: BLE001
+        return
+    _PROCS[f"compose-logs-{deployment_pk}"] = proc
+    try:
+        with open(log_path, "a", encoding="utf-8", errors="replace") as logf:
+            for raw in iter(proc.stdout.readline, ""):
+                if raw == "":
+                    break
+                logf.write(raw)
+                logf.flush()
+                try:
+                    obs.ingest_line_lookup(deployment_pk, raw.rstrip("\n"))
+                except Exception:  # noqa: BLE001
                     pass
     except Exception:  # noqa: BLE001
         pass
@@ -484,6 +542,7 @@ def deploy(environment, *, commit_sha: str | None = None, source_path: str | Non
         environment.port = port
         environment.save(update_fields=["port"])
         _ensure_domain(environment)
+        _ensure_default_monitor(deployment)
 
         Event.log(
             f"deployed {environment.name} live",
@@ -613,6 +672,16 @@ def _deploy_compose(deployment, environment, commit_sha, source_path,
         environment.port = port
         environment.save(update_fields=["port"])
         _ensure_domain(environment)
+        _ensure_default_monitor(deployment)
+
+        # Stream the compose stack's container logs into Hull's observability
+        # (so compose deploys get LogLines + metrics + monitor-driven incidents,
+        # same as the process runtime). Best-effort daemon thread.
+        threading.Thread(
+            target=_tee_compose_logs,
+            args=(deployment.pk, app_dir, compose_path, pname, log_path),
+            daemon=True,
+        ).start()
 
         Event.log(
             f"deployed {environment.name} live (compose)",
